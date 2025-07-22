@@ -3,9 +3,21 @@
 
 <head>
     <title>Radiation 3D prototype</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         body {
             margin: 0;
+        }
+
+        #functionbox {
+            width: 250px;
+            height: 1140px;
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            z-index: 100;
+            background-color: #4444447e;
+            border-radius: 4px;
         }
 
         #renderbody {
@@ -14,19 +26,27 @@
         }
 
         #deleteplane {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
             padding: 8px 16px;
-            background: #f44336;
-            width: 120px;
-            height: 30px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 10px;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
         }
 
         #deleteplane:hover {
-            background: #d32f2f;
+            background: #007e7a;
         }
 
         #deleteplane:disabled {
@@ -34,36 +54,152 @@
             cursor: not-allowed;
         }
 
-        #imageInput {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 100;
-        }
-
-        #addplane {
+        .custom-file-upload {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: 22px;
             padding: 8px 16px;
-            background: #4CAF50;
-            width: 120px;
-            height: 30px;
+            background: #00a19b;
+            width: 168px;
+            height: 32px;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 10px;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        .custom-file-upload:hover {
+            background-color: #007e7a;
+        }
+
+        .custom-file-upload:active {
+            transform: scale(0.97);
+        }
+
+        #addplane {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
         }
 
         #addplane:hover {
-            background: #45a049;
+            background: #007e7a;
         }
 
-        #functionbox {
+        #top {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
             width: 200px;
-            height: 100px;
-            position: absolute;
-            top: 50px;
-            left: 10px;
-            z-index: 100;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #top:hover {
+            background: #007e7a;
+        }
+
+        #front {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #front:hover {
+            background: #007e7a;
+        }
+
+        #side {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #side:hover {
+            background: #007e7a;
+        }
+
+        #perspective {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #perspective:hover {
+            background: #007e7a;
         }
 
         #renderbody {
@@ -122,35 +258,234 @@
             cursor: pointer;
         }
 
+        #scalinginput {
+            padding: 6px 8px;
+            font-size: 20px;
+            font-family: 'Poppins', sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            outline: none;
+            margin-left: 25px;
+            width: 200px;
+            max-width: 185px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        #scalinginput:placeholder {
+            color: #aaa;
+        }
+
+        #scalinginput:focus {
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+        }
+
+        #scalingbutton {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #scalingbutton:hover {
+            background: #007e7a;
+        }
+
+        #updatescale {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #updatescale:hover {
+            background: #007e7a;
+        }
+
+        #exportBtn {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #exportBtn:hover {
+            background: #007e7a;
+        }
+
+
+        #importbtn {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: 24px;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 168px;
+            height: 32px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #importbtn:hover {
+            background-color: #007e7a;
+        }
+
+        #importbtn:active {
+            transform: scale(0.97);
+        }
+
+        #detail {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #detail:hover {
+            background: #007e7a;
+        }
+
+
+        #contourgenerator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #contourgenerator:hover {
+            background: #007e7a;
+        }
+
         canvas {
             position: absolute;
             top: 0;
             left: 0;
             outline: none;
         }
+
+        hr {
+            border: none;
+            border-top: 1px solid #444;
+            margin: 10px 0;
+        }
+
+        p {
+            font: bolder;
+            font-size: 24px;
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+            margin: 5px 0 10px 0;
+            font-weight: bold;
+            color: aliceblue;
+        }
     </style>
 
 </head>
 
 <body>
-    <input type="file" id="imageInput" accept="image/*">
+
     <div id="functionbox">
+        <p>Floor plan</p>
+        <input type="file" id="imageInput" accept="image/*" hidden>
+        <label for="imageInput" class="custom-file-upload">Upload Image</label>
+        <hr>
+        <p>Objects</p>
         <button id="addplane"> Add Plane </button>
         <button id="deleteplane">Delete Plane </button>
+        <hr>
+        <p>Views</p>
         <button id="top">Top</button>
         <button id="front"> Front</button>
-        <button id="side">side</button>
+        <button id="side">Side</button>
         <button id="perspective">Perspective</button>
-        <input type="text" name="Set scale" id="scalinginput">
+        <hr>
+        <p>Scaling</p>
+        <input type="text" name="Set scale" id="scalinginput" placeholder="Enter the distance">
         <button id="scalingbutton"> Set scale </button>
         <button id="updatescale"> Update </button>
+        <hr>
+        <p>Save</p>
         <button id="exportBtn"> Export Scene</button>
+        <input type="file" id="importFile" accept=".json" hidden>
+        <label for="importFile" id="importbtn"> Import Scene </label>
+        <hr>
+        <p>Calculation</p>
         <button id="detail">Show detail</button>
-        <!-- <button id="importBtn">Import Scene</button> -->
-        <label for="importFile" style=" background: #4CAF50; color: white; cursor: pointer;">
-            Import Scene
-        </label>
-        <input type="file" id="importFile" accept=".json" style="display: none;">
         <button id="contourgenerator">Contour</button>
     </div>
     <svg id="contour-svg" width="512" height="512" style="display:none;"></svg>
@@ -177,7 +512,7 @@
     <script>
         // 1. Setup scene, camera, renderer
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+        scene.background = new THREE.Color("#222");
 
         //set up different camera parameters
         const frustumSize = 40;
@@ -486,8 +821,8 @@
 
 
         // Function to create a new plane
-        function createPlane() {
-            const geometry = new THREE.PlaneGeometry(1, 1);
+        function createPlane(width = 1, height = 1) {
+            const geometry = new THREE.PlaneGeometry(width, height);
             const material = new THREE.MeshStandardMaterial({
                 color: new THREE.Color(Math.random() * 0xffffff),
                 side: THREE.DoubleSide,
@@ -495,14 +830,14 @@
             });
 
             const plane = new THREE.Mesh(geometry, material);
-            plane.position.set(0, 0.5, 0);
+            plane.position.set(0, height/2, 0);
             plane.rotation.y = Math.PI * 2;
 
             // Store plane data
             const planeData = {
                 mesh: plane,
-                width: 1,
-                height: 1,
+                width: width,
+                height: height,
                 x: plane.position.x,
                 y: plane.position.y,
                 z: plane.position.z,
@@ -900,14 +1235,13 @@
 
             // Load planes
             sceneData.planes.forEach(planeData => {
-                const newPlane = createPlane();
+                const newPlane = createPlane(planeData.width, planeData.height);
                 newPlane.mesh.position.fromArray(planeData.position);
                 newPlane.mesh.rotation.fromArray(planeData.rotation);
                 newPlane.mesh.scale.fromArray(planeData.scale);
-                newPlane.width = planeData.width;
-                newPlane.height = planeData.height;
                 newPlane.color = planeData.color;
                 newPlane.mesh.material.color.setHex(planeData.color);
+                updateGUI(newPlane);
             });
 
             // Load scaling data
