@@ -1046,14 +1046,18 @@
                 return;
             }
 
+            if (selectedPlaneGroup) {
+                ungroupPlanes();
+            }
+
             selectedPlanes.forEach(planeData => {
                 // Reset all properties to defaults
-                planeData.width = planeData.defaultWidth;
-                planeData.height = planeData.defaultHeight;
-                planeData.x = planeData.defaultX;
-                planeData.y = planeData.defaultY;
-                planeData.z = planeData.defaultZ;
-                planeData.angle = planeData.defaultAngle;
+                planeData.width = 1;
+                planeData.height = 1;
+                planeData.x = 0;
+                planeData.y = 0.5;
+                planeData.z = 0;
+                planeData.angle = 0;
                 planeData.incline = 0; // Reset incline to 0
                 planeData.color = planeData.defaultColor;
 
@@ -1510,8 +1514,8 @@
             planeData.z = planeData.mesh.position.z;
 
             // Update rotation (convert to degrees)
-            planeData.angle = planeData.mesh.rotation.y * (180 / Math.PI);
-            planeData.incline = planeData.mesh.rotation.x * (180 / Math.PI);
+            planeData.angle = Math.abs(mesh.rotation.y * (180 / Math.PI)) < 1e-10 ? 0 : mesh.rotation.y * (180 / Math.PI);
+            planeData.incline = Math.abs(mesh.rotation.x * (180 / Math.PI)) < 1e-10 ? 0 : mesh.rotation.x * (180 / Math.PI);
 
             if (transformControlss.getMode() === 'scale') {
                 planeData.width = planeData.defaultWidth * mesh.scale.x;
