@@ -455,7 +455,7 @@
             background: #007e7a;
         }
 
-        
+
         #calculate {
             display: flex;
             justify-content: center;
@@ -535,11 +535,12 @@
             border-radius: 4px !important;
             font-family: 'Poppins', sans-serif;
             font: 700;
+            width: 100% !important;
+            margin-left: 0 !important;
         }
 
         .dg .c .slider {
-            height: 24px !important;
-            background: #444 !important;
+            display: none !important;
         }
 
         .dg .c .slider-fg {
@@ -1131,19 +1132,14 @@
                 planeData.name = newName;
             });
 
-            const roundedupdata = {
-                angle: Math.abs(planeData.angle) < 0.001 ? 0 : planeData.angle,
-                incline: Math.abs(planeData.incline) < 0.001 ? 0 : planeData.incline,
-            }
-
             // Add controls for the selected plane
             const widthController = gui.add(planeData, 'width').name('Width').step(0.1);
             const heightController = gui.add(planeData, 'height').name('Height').step(0.1);
             const xController = gui.add(planeData, 'x').name('X-position').step(0.1);
             const yController = gui.add(planeData, 'y').name('Y-position').step(0.1);
             const zController = gui.add(planeData, 'z').name('Z-position').step(0.1);
-            const angleController = gui.add(roundedupdata, 'angle').name('Rotation').step(1);
-            const inclineController = gui.add(roundedupdata, 'incline').name("Inclination").step(1);
+            const angleController = gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1);
+            const inclineController = gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1);
             const tempController = gui.add(planeData, "temperature").name("Temperature");
 
             // Track previous values
@@ -1176,8 +1172,13 @@
                     planeData.y,
                     planeData.z
                 );
-                planeData.mesh.rotation.y = planeData.angle * Math.PI / 180;
-                planeData.mesh.rotation.x = planeData.incline * Math.PI / 180;
+
+                planeData.mesh.rotation.set(
+                    planeData.incline * Math.PI / 180,  // X rotation (incline)
+                    planeData.angle * Math.PI / 180,    // Y rotation (angle)
+                    0                                  // Z rotation
+                );
+
 
                 if (transformControlss.object === planeData.mesh) {
                     transformControlss.update();
