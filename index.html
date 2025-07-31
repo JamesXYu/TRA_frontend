@@ -11,7 +11,7 @@
 
         #functionbox {
             width: 250px;
-            height: 1280px;
+            height: auto;
             position: absolute;
             top: 50px;
             left: 10px;
@@ -111,17 +111,17 @@
             justify-content: center;
             align-items: center;
             font-family: 'Poppins', sans-serif;
-            font: 700;
-            font-size: x-large;
+            font: 400;
+            font-size: large;
             padding: 8px 16px;
             background: #00a19b;
-            width: 200px;
+            width: 60px;
             height: 50px;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 25px;
+            margin-left: 0px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -136,16 +136,16 @@
             align-items: center;
             font-family: 'Poppins', sans-serif;
             font: 700;
-            font-size: x-large;
+            font-size: large;
             padding: 8px 16px;
             background: #00a19b;
-            width: 200px;
+            width: 60px;
             height: 50px;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 25px;
+            margin-left: 8px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -159,17 +159,17 @@
             justify-content: center;
             align-items: center;
             font-family: 'Poppins', sans-serif;
-            font: 700;
-            font-size: x-large;
+            font: 400;
+            font-size: large;
             padding: 8px 16px;
             background: #00a19b;
-            width: 200px;
+            width: 60px;
             height: 50px;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 25px;
+            margin-left: 8px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -580,6 +580,11 @@
         .dg.main .close-button:hover {
             background-color: #007e7a !important;
         }
+
+        .view-buttons-container {
+            display: flex;
+            justify-content: center;
+        }
     </style>
 
 </head>
@@ -591,15 +596,17 @@
         <input type="file" id="imageInput" accept="image/*" hidden>
         <label for="imageInput" class="custom-file-upload">Upload Image</label>
         <hr>
-        <p>Objects</p>
+        <p>Plane</p>
         <button id="addplane"> Add Plane </button>
         <button id="deleteplane">Delete Plane </button>
         <button id="resetPlane">Reset Plane</button>
         <hr>
         <p>Views</p>
-        <button id="top">Top</button>
-        <button id="front"> Front</button>
-        <button id="side">Side</button>
+        <div class="view-buttons-container">
+            <button id="top">Top</button>
+            <button id="front"> Front</button>
+            <button id="side">Side</button>
+        </div>
         <button id="perspective">Perspective</button>
         <hr>
         <p>Scaling</p>
