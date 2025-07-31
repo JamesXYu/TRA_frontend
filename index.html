@@ -11,7 +11,7 @@
 
         #functionbox {
             width: 250px;
-            height: 1140px;
+            height: 1280px;
             position: absolute;
             top: 50px;
             left: 10px;
@@ -455,6 +455,31 @@
             background: #007e7a;
         }
 
+        
+        #calculate {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #calculate:hover {
+            background: #007e7a;
+        }
+
         canvas {
             position: absolute;
             top: 0;
@@ -476,6 +501,83 @@
             margin: 5px 0 10px 0;
             font-weight: bold;
             color: aliceblue;
+        }
+
+        .my-custom-gui {
+            font-size: 26px;
+            width: 700px;
+            background-color: #222;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        /* Bigger dat.GUI with your color scheme */
+        .dg.main {
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 20px !important;
+            background-color: rgba(68, 68, 68, 0.8) !important;
+            border-radius: 4px !important;
+            width: 500px !important;
+        }
+
+        .dg .cr {
+            height: 40px !important;
+            line-height: 40px !important;
+            border-bottom: 1px solid #444 !important;
+        }
+
+        .dg .c input[type=text] {
+            height: 28px !important;
+            font-size: 20px !important;
+            background: #555 !important;
+            color: white !important;
+            border: 1px solid #666 !important;
+            border-radius: 4px !important;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+        }
+
+        .dg .c .slider {
+            height: 24px !important;
+            background: #444 !important;
+        }
+
+        .dg .c .slider-fg {
+            background: #00a19b !important;
+            height: 24px !important;
+        }
+
+        .dg .c .slider:hover .slider-fg {
+            background: #007e7a !important;
+        }
+
+        .dg .title {
+            font-size: 18px !important;
+            padding: 8px 10px !important;
+            background-color: rgba(0, 161, 155, 0.3) !important;
+        }
+
+        .dg .cr.function .property-name {
+            color: white !important;
+            font-weight: 500 !important;
+        }
+
+        .dg .cr.function:hover {
+            background: rgba(0, 161, 155, 0.2) !important;
+        }
+
+        .dg .cr.number .property-name,
+        .dg .cr.boolean .property-name {
+            color: white !important;
+            font-weight: 500 !important;
+        }
+
+        .dg.main .close-button {
+            display: none !important;
+        }
+
+        .dg.main .close-button:hover {
+            background-color: #007e7a !important;
         }
     </style>
 
@@ -512,6 +614,7 @@
         <p>Calculation</p>
         <button id="detail">Show detail</button>
         <button id="contourgenerator">Contour</button>
+        <button id="calculate">Calculate</button>
 
     </div>
     <svg id="contour-svg" width="512" height="512" style="display:none;"></svg>
@@ -550,9 +653,12 @@
         }
 
         cameras.perspective.position.set(10, 10, 10);
-        cameras.top.position.set(0, 15, 0);
-        cameras.front.position.set(0, 0, 15);
-        cameras.left.position.set(-15, 0, 0);
+        cameras.top.position.set(0, 10, 0);
+        cameras.top.lookAt(0, 0, 0);
+        cameras.front.position.set(0, 0, 10);
+        cameras.front.lookAt(0, 0, 0);
+        cameras.left.position.set(-10, 0, 0);
+        cameras.left.lookAt(0, 0, 0);
 
         for (const key in cameras) cameras[key].lookAt(0, 0, 0);
         let activeCamera = cameras.perspective;
@@ -573,16 +679,12 @@
         document.getElementById('perspective').addEventListener('click', () => setView(cameras.perspective));
         document.getElementById('top').addEventListener('click', () => {
             setView(cameras.top)
-
-            // updateOrthoCameras();
         });
         document.getElementById('front').addEventListener('click', () => {
             setView(cameras.front)
-            // updateOrthoCameras();
         });
         document.getElementById('side').addEventListener('click', () => {
             setView(cameras.left)
-            // updateOrthoCameras();
         });
 
         // At the top with your other variables
@@ -640,9 +742,28 @@
         controls.update();
 
         function setView(camera) {
+
+            controls.reset();
+
             activeCamera = camera;
             controls.object = camera;
             transformControlss.camera = camera;
+
+            if (camera === cameras.top) {
+                camera.position.set(0, 10, 0);
+                camera.lookAt(0, 0, 0);
+            } else if (camera === cameras.front) {
+                camera.position.set(0, 0, 10);
+                camera.lookAt(0, 0, 0);
+            } else if (camera === cameras.left) {
+                camera.position.set(-10, 0, 0);
+                camera.lookAt(0, 0, 0);
+            }
+
+            // Update projection matrices
+            if (camera.isOrthographicCamera) {
+                updateOrthoCameras();
+            }
 
             // Toggle wireframe based on view
             const isTopView = (camera === cameras.top);
@@ -764,6 +885,7 @@
         const planes = [];
         let selectedPlane = null;
         let gui = new dat.GUI();
+        gui.domElement.classList.add("my-custom-gui");
         let transformControls = null;
 
         //new bit for scaling
@@ -875,10 +997,10 @@
             });
 
             const plane = new THREE.Mesh(geometry, material);
-            plane.position.set(0, height / 2, 0);
+            plane.position.set(0, 0, 0);
             plane.rotation.y = Math.PI * 2;
             plane.scale.set(1, 1, 1);
-
+            const defaultName = `Plane ${planes.length + 1}`;
             // Store plane data
             const planeData = {
                 mesh: plane,
@@ -891,8 +1013,8 @@
                 defaultY: height / 2,
                 defaultZ: 0,
                 defaultAngle: 0,
-
                 defaultColor: material.color.getHex(),
+                name: defaultName,
                 x: plane.position.x,
                 y: plane.position.y,
                 z: plane.position.z,
@@ -911,46 +1033,52 @@
             return planeData;
         }
         function resetPlaneToDefault() {
-            if (!selectedPlane) {
-                alert("Please select a plane first");
+            if (selectedPlanes.length === 0) {
+                alert("Please select at least one plane first");
                 return;
             }
 
-            // Reset all properties to defaults
-            selectedPlane.width = selectedPlane.defaultWidth;
-            selectedPlane.height = selectedPlane.defaultHeight;
-            selectedPlane.x = selectedPlane.defaultX;
-            selectedPlane.y = selectedPlane.defaultY;
-            selectedPlane.z = selectedPlane.defaultZ;
-            selectedPlane.angle = selectedPlane.defaultAngle;
-            selectedPlane.color = selectedPlane.defaultColor;
+            selectedPlanes.forEach(planeData => {
+                // Reset all properties to defaults
+                planeData.width = planeData.defaultWidth;
+                planeData.height = planeData.defaultHeight;
+                planeData.x = planeData.defaultX;
+                planeData.y = planeData.defaultY;
+                planeData.z = planeData.defaultZ;
+                planeData.angle = planeData.defaultAngle;
+                planeData.incline = 0; // Reset incline to 0
+                planeData.color = planeData.defaultColor;
 
-            // Update the mesh
-            selectedPlane.mesh.geometry.dispose();
-            selectedPlane.mesh.geometry = new THREE.PlaneGeometry(
-                selectedPlane.width,
-                selectedPlane.height
-            );
+                // Update the mesh
+                planeData.mesh.geometry.dispose();
+                planeData.mesh.geometry = new THREE.PlaneGeometry(
+                    planeData.width,
+                    planeData.height
+                );
 
-            selectedPlane.mesh.position.set(
-                selectedPlane.x,
-                selectedPlane.y,
-                selectedPlane.z
-            );
-            selectedPlane.mesh.rotation.y = selectedPlane.angle * Math.PI / 180;
-            selectedPlane.mesh.rotation.x = selectedPlane.angle * Math.PI / 180;
-            selectedPlane.mesh.rotation.z = selectedPlane.angle * Math.PI / 180;
-
-            selectedPlane.mesh.scale.set(1, 1, 1);
-            selectedPlane.mesh.material.color.setHex(selectedPlane.color);
+                planeData.mesh.position.set(
+                    planeData.x,
+                    planeData.y,
+                    planeData.z
+                );
+                planeData.mesh.rotation.set(
+                    planeData.incline * Math.PI / 180, // x rotation (incline)
+                    planeData.angle * Math.PI / 180,   // y rotation (angle)
+                    0                                  // z rotation
+                );
+                planeData.mesh.scale.set(1, 1, 1);
+                planeData.mesh.material.color.setHex(planeData.color);
+            });
 
             // Update transform controls if attached
-            if (transformControlss.object === selectedPlane.mesh) {
+            if (transformControlss.object) {
                 transformControlss.update();
             }
 
             // Update the GUI
-            updateGUI(selectedPlane);
+            if (selectedPlanes.length > 0) {
+                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+            }
         }
 
         // Add event listener for the reset button
@@ -989,13 +1117,33 @@
             gui.destroy();
             gui = new dat.GUI();
 
+            const nameController = gui.add(planeData, 'name').name('Name');
+            nameController.onChange(function (newName) {
+                // Check if name already exists
+                const nameExists = planes.some(p => p !== planeData && p.name === newName);
+                if (nameExists) {
+                    alert('This name already exists! Please choose a different name.');
+                    // Revert to previous name
+                    nameController.setValue(planeData.name);
+                    return;
+                }
+                // Update the name
+                planeData.name = newName;
+            });
+
+            const roundedupdata = {
+                angle: Math.abs(planeData.angle) < 0.001 ? 0 : planeData.angle,
+                incline: Math.abs(planeData.incline) < 0.001 ? 0 : planeData.incline,
+            }
+
             // Add controls for the selected plane
             const widthController = gui.add(planeData, 'width').name('Width').step(0.1);
             const heightController = gui.add(planeData, 'height').name('Height').step(0.1);
             const xController = gui.add(planeData, 'x').name('X-position').step(0.1);
+            const yController = gui.add(planeData, 'y').name('Y-position').step(0.1);
             const zController = gui.add(planeData, 'z').name('Z-position').step(0.1);
-            const angleController = gui.add(planeData, 'angle').name('Rotation').step(1);
-            const inclineController = gui.add(planeData, 'incline').name("Inclination").step(1);
+            const angleController = gui.add(roundedupdata, 'angle').name('Rotation').step(1);
+            const inclineController = gui.add(roundedupdata, 'incline').name("Inclination").step(1);
             const tempController = gui.add(planeData, "temperature").name("Temperature");
 
             // Track previous values
@@ -1007,11 +1155,16 @@
                 if (widthController.__oldValue !== planeData.width ||
                     heightController.__oldValue !== planeData.height) {
 
+                    planeData.defaultWidth = planeData.width;
+                    planeData.defaultHeight = planeData.height;
+
                     planeData.mesh.geometry.dispose();
                     planeData.mesh.geometry = new THREE.PlaneGeometry(
                         planeData.width,
                         planeData.height
                     );
+
+                    planeData.mesh.scale.set(1, 1, 1);
 
                     widthController.__oldValue = planeData.width;
                     heightController.__oldValue = planeData.height;
@@ -1020,17 +1173,22 @@
                 // Update position and rotation
                 planeData.mesh.position.set(
                     planeData.x,
-                    planeData.height / 2,
+                    planeData.y,
                     planeData.z
                 );
                 planeData.mesh.rotation.y = planeData.angle * Math.PI / 180;
                 planeData.mesh.rotation.x = planeData.incline * Math.PI / 180;
+
+                if (transformControlss.object === planeData.mesh) {
+                    transformControlss.update();
+                }
             }
 
             // Add listeners
             widthController.onChange(updateFromGUI);
             heightController.onChange(updateFromGUI);
             xController.onChange(updateFromGUI);
+            yController.onChange(updateFromGUI);
             zController.onChange(updateFromGUI);
             angleController.onChange(updateFromGUI);
             inclineController.onChange(updateFromGUI);
@@ -1066,6 +1224,7 @@
                         // Shift+click - toggle selection
                         const index = selectedPlanes.indexOf(planeData);
                         if (index === -1) {
+                            // Add to selection
                             selectedPlanes.push(planeData);
                             planeData.mesh.material.color.setHex(0xffff00);
 
@@ -1074,6 +1233,7 @@
                                 createOrUpdateGroup();
                             }
                         } else {
+                            // Remove from selection - but don't remove from scene!
                             selectedPlanes.splice(index, 1);
                             planeData.mesh.material.color.setHex(planeData.color);
 
@@ -1265,6 +1425,9 @@
                     transformControlss.object === selectedPlanes[selectedPlanes.length - 1].mesh) {
                     updatePlaneDataFromTransform();
                 }
+                if (selectedPlanes.length > 0) {
+                    updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+                }
             });
         }
 
@@ -1336,6 +1499,7 @@
             if (selectedPlanes.length === 0) return;
 
             const planeData = selectedPlanes[selectedPlanes.length - 1];
+            const mesh = planeData.mesh;
 
             // Update position
             planeData.x = planeData.mesh.position.x;
@@ -1345,6 +1509,11 @@
             // Update rotation (convert to degrees)
             planeData.angle = planeData.mesh.rotation.y * (180 / Math.PI);
             planeData.incline = planeData.mesh.rotation.x * (180 / Math.PI);
+
+            if (transformControlss.getMode() === 'scale') {
+                planeData.width = planeData.defaultWidth * mesh.scale.x;
+                planeData.height = planeData.defaultHeight * mesh.scale.y;
+            }
 
             // Update the GUI to reflect changes
             updateGUI(planeData);
@@ -1391,7 +1560,7 @@
             const newPlane = createPlane();
             updateGUI(newPlane);
             selectedPlane = newPlane;
-            TransformControlss(newPlane.mesh);
+            transformControlss.attach(newPlane.mesh);
         });
 
 
@@ -1413,6 +1582,7 @@
                     texture: imagePlane.material.map ? imagePlane.material.map.image.currentSrc : null
                 },
                 planes: planes.map(plane => ({
+                    name: plane.name,
                     position: plane.mesh.position.toArray(),
                     rotation: plane.mesh.rotation.toArray(),
                     scale: plane.mesh.scale.toArray(),
@@ -1488,6 +1658,7 @@
             // Load planes
             sceneData.planes.forEach(planeData => {
                 const newPlane = createPlane(planeData.width, planeData.height);
+                newPlane.name = planeData.name || `Plane ${planes.length}`;
                 newPlane.mesh.position.fromArray(planeData.position);
                 newPlane.mesh.rotation.fromArray(planeData.rotation);
                 newPlane.mesh.scale.fromArray(planeData.scale);
@@ -1532,6 +1703,97 @@
         }
 
         let dataarrayforcontour = null;
+
+        function generatePointsOnPlane(plane, rows = 11, cols = 11) {
+            const points = [];
+            const width = plane.width;
+            const height = plane.height;
+
+            // Calculate step sizes
+            const xStep = width / (cols - 1);
+            const zStep = height / (rows - 1);
+
+            // Create rotation matrix from plane's rotation and inclination
+            const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+            const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+            const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+            const rotationMatrix = new THREE.Matrix4()
+                .multiply(makeHorizontal)
+                .multiply(rotationX)
+                .multiply(rotationY);
+
+            // Generate grid points
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    // Calculate local position (centered)
+                    const xLocal = (col * xStep) - (width / 2);
+                    const zLocal = (row * zStep) - (height / 2);
+                    const yLocal = 0; // On the plane surface
+
+                    // Create vector and apply rotation
+                    const point = new THREE.Vector3(xLocal, yLocal, zLocal);
+                    point.applyMatrix4(rotationMatrix);
+
+                    // Add plane position offset
+                    point.x += plane.x;
+                    point.y += plane.y;
+                    point.z += plane.z;
+
+                    points.push({
+                        id: row * cols + col + 1,
+                        position: {
+                            x: parseFloat(point.x.toFixed(4)),
+                            y: parseFloat(point.y.toFixed(4)),
+                            z: parseFloat(point.z.toFixed(4))
+                        },
+                        localGrid: {
+                            row: row + 1,
+                            column: col + 1
+                        }
+                    });
+                }
+            }
+
+            return points;
+        }
+
+        function Pointsinfo() {
+            const exportData = planes.map(plane => {
+                const points = generatePointsOnPlane(plane).map(point => [
+                    point.position.x,
+                    point.position.y,
+                    point.position.z
+                ]);
+
+                return {
+                    [plane.name || "Unnamed"]: points
+                };
+            });
+
+            // Create a JSON string with pretty formatting (2-space indentation)
+            const jsonString = JSON.stringify(exportData, null, 2);
+
+            // Create a Blob with the JSON data
+            const blob = new Blob([jsonString], { type: 'application/json' });
+
+            // Create a download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `planes_export_${new Date().toISOString().slice(0, 10)}.json`;
+
+            // Trigger the download
+            document.body.appendChild(a);
+            a.click();
+
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
+
+        document.getElementById("calculate").addEventListener("click", Pointsinfo);
 
         // Add this function to handle the contour generation
         function addContourToSelectedPlane() {
@@ -1598,6 +1860,115 @@
                 selectedPlane.mesh.material.color.set(0xffffff); // Reset color for proper texture display
             };
             img.src = url;
+        }
+
+        let clipboard = null; // Will store copied planes
+        let isCtrlPressed = false; // Track Ctrl key state
+        // Add these near your other key listeners
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Control') {
+                isCtrlPressed = true;
+            }
+            // Add copy/paste shortcuts (Ctrl+C, Ctrl+V)
+            if (isCtrlPressed && event.key === 'c') {
+                copySelected();
+            }
+            if (isCtrlPressed && event.key === 'v') {
+                pasteFromClipboard();
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.key === 'Control') {
+                isCtrlPressed = false;
+            }
+        });
+
+        function copySelected() {
+            if (selectedPlanes.length === 0) return;
+
+            clipboard = {
+                isGroup: selectedPlaneGroup !== null,
+                planes: selectedPlanes.map(plane => ({
+                    width: plane.defaultWidth,
+                    height: plane.defaultHeight,
+                    position: plane.mesh.position.clone(),
+                    rotation: plane.mesh.rotation.clone(),
+                    scale: plane.mesh.scale.clone(),
+                    color: plane.color,
+                    temperature: plane.temperature
+                })),
+                relativePositions: selectedPlaneGroup ?
+                    selectedPlanes.map(plane => plane.mesh.position.clone()) :
+                    null
+            };
+            console.log('Copied selection to clipboard');
+        }
+
+        function pasteFromClipboard() {
+            if (!clipboard) return;
+
+            // Clear current selection
+            planes.forEach(p => p.mesh.material.color.setHex(p.color));
+            selectedPlanes = [];
+            if (selectedPlaneGroup) {
+                ungroupPlanes();
+            }
+
+            // Create new planes from clipboard
+            const newPlanes = [];
+            const offset = new THREE.Vector3(1, 0, 1); // Small offset for pasted copies
+
+            clipboard.planes.forEach((planeData, index) => {
+                const newPlane = createPlane(planeData.width, planeData.height);
+
+                // Set properties from copied plane
+                newPlane.mesh.position.copy(planeData.position).add(offset);
+                newPlane.mesh.rotation.copy(planeData.rotation);
+                newPlane.mesh.scale.copy(planeData.scale);
+                newPlane.mesh.material.color.setHex(planeData.color);
+
+                newPlane.width = planeData.width;
+                newPlane.height = planeData.height;
+                newPlane.defaultWidth = planeData.width;
+                newPlane.defaultHeight = planeData.height;
+
+                // Update plane data
+                newPlane.x = newPlane.mesh.position.x;
+                newPlane.y = newPlane.mesh.position.y;
+                newPlane.z = newPlane.mesh.position.z;
+                newPlane.color = planeData.color;
+                newPlane.temperature = planeData.temperature;
+
+                // Select the new plane
+                newPlanes.push(newPlane);
+                newPlane.mesh.material.color.setHex(0xffff00);
+            });
+
+            selectedPlanes = [...newPlanes];
+
+            // If original was a group, recreate the group structure
+            if (clipboard.isGroup && selectedPlanes.length > 1) {
+                createOrUpdateGroup();
+
+                // Apply relative positions if available
+                if (clipboard.relativePositions) {
+                    selectedPlanes.forEach((plane, index) => {
+                        if (clipboard.relativePositions[index]) {
+                            plane.mesh.position.copy(clipboard.relativePositions[index]);
+                        }
+                    });
+                    updateGroupPosition();
+                }
+            }
+
+            // Update transform controls and GUI
+            updateTransformControls();
+            if (selectedPlanes.length > 0) {
+                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+            }
+
+            console.log('Pasted from clipboard');
         }
 
 
