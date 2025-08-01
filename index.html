@@ -9,6 +9,8 @@
             margin: 0;
         }
 
+
+
         #functionbox {
             width: 250px;
             height: auto;
@@ -16,6 +18,8 @@
             top: 50px;
             left: 10px;
             z-index: 100;
+
+            background-color: #b5cea8;
             background-color: #4444447e;
             border-radius: 4px;
         }
@@ -647,9 +651,75 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/Line2.js"></script>
 
     <script>
-        // 1. Setup scene, camera, renderer
+
+
+
+        // Add these variables near the top with your other variables
+        let history = [];
+        let historyIndex = -1;
+        const MAX_HISTORY_STEPS = 500; // Prevent memory bloat
+        function initializeHistory() {
+            // Capture initial empty state
+            const initialState = planes.map(plane => ({
+                position: plane.mesh.position.clone(),
+                rotation: plane.mesh.rotation.clone(),
+                scale: plane.mesh.scale.clone(),
+                width: plane.width,
+                height: plane.height,
+                color: plane.color,
+                temperature: plane.temperature,
+                name: plane.name
+            }));
+
+            history = [initialState];
+            historyIndex = 0;
+            console.log("Initial history state captured");
+        }
+
+
+        // Add undo/redo functions
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                console.log(`Undo to state ${historyIndex + 1}/${history.length}`);
+                restoreState(historyIndex);
+            } else {
+                console.log("Already at earliest state");
+            }
+        }
+
+        function redo() {
+            if (historyIndex < history.length - 1) {
+                historyIndex++;
+                console.log(`Redo to state ${historyIndex + 1}/${history.length}`);
+                restoreState(historyIndex);
+            } else {
+                console.log("Already at latest state");
+            }
+        }
+
+        // Replace the current keyboard event listener with this:
+        window.addEventListener('keydown', (event) => {
+            if (event.ctrlKey || event.metaKey) {
+                if (event.key === 'z' && !event.shiftKey) {
+                    undo();
+                    event.preventDefault();
+                } else if ((event.key === 'y' || (event.shiftKey && event.key === 'z'))) {
+                    redo();
+                    event.preventDefault();
+                }
+            }
+        });
+
+        // Add event listeners for buttons
+        document.getElementById('undoBtn')?.addEventListener('click', undo);
+        document.getElementById('redoBtn')?.addEventListener('click', redo);
+
+        // Now we need to capture states at key moments. Add these calls:
+
         const scene = new THREE.Scene();
         scene.background = new THREE.Color("#222");
+
 
         //set up different camera parameters
         const frustumSize = 40;
@@ -1037,15 +1107,22 @@
 
             // Make plane selectable
             plane.userData = planeData;
-
+            if (history.length === 0) {
+                initializeHistory();
+            }
+            captureState(true);
             return planeData;
+
         }
+
         function resetPlaneToDefault() {
             if (selectedPlanes.length === 0) {
                 alert("Please select at least one plane first");
                 return;
             }
 
+            captureState();
+            
             if (selectedPlaneGroup) {
                 ungroupPlanes();
             }
@@ -1082,15 +1159,12 @@
                 planeData.mesh.material.color.setHex(planeData.color);
             });
 
-            // Update transform controls if attached
-            if (transformControlss.object) {
-                transformControlss.update();
-            }
-
             // Update the GUI
             if (selectedPlanes.length > 0) {
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
+
+            captureState();
         }
 
         // Add event listener for the reset button
@@ -1119,48 +1193,49 @@
             gui.destroy();
             gui = new dat.GUI();
             selectedPlanes = [];
+            captureState();
         }
 
         document.getElementById("deleteplane").addEventListener("click", deleteplanefn);
 
         // Function to update GUI for selected plane
         function updateGUI(planeData) {
-            // Clear previous GUI
             gui.destroy();
             gui = new dat.GUI();
 
             const nameController = gui.add(planeData, 'name').name('Name');
             nameController.onChange(function (newName) {
-                // Check if name already exists
                 const nameExists = planes.some(p => p !== planeData && p.name === newName);
                 if (nameExists) {
                     alert('This name already exists! Please choose a different name.');
-                    // Revert to previous name
                     nameController.setValue(planeData.name);
                     return;
                 }
-                // Update the name
                 planeData.name = newName;
+                captureState();
             });
 
-            // Add controls for the selected plane
-            const widthController = gui.add(planeData, 'width').name('Width').step(0.1);
-            const heightController = gui.add(planeData, 'height').name('Height').step(0.1);
-            const xController = gui.add(planeData, 'x').name('X-position').step(0.1);
-            const yController = gui.add(planeData, 'y').name('Y-position').step(0.1);
-            const zController = gui.add(planeData, 'z').name('Z-position').step(0.1);
-            const angleController = gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1);
-            const inclineController = gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1);
-            const tempController = gui.add(planeData, "temperature").name("Temperature");
+            // Add controllers with explicit state capture
+            const controllers = {
+                width: gui.add(planeData, 'width').name('Width').step(0.1),
+                height: gui.add(planeData, 'height').name('Height').step(0.1),
+                x: gui.add(planeData, 'x').name('X-position').step(0.1),
+                y: gui.add(planeData, 'y').name('Y-position').step(0.1),
+                z: gui.add(planeData, 'z').name('Z-position').step(0.1),
+                angle: gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1),
+                incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
+                temp: gui.add(planeData, "temperature").name("Temperature")
+            };
 
             // Track previous values
-            widthController.__oldValue = planeData.width;
-            heightController.__oldValue = planeData.height;
+            controllers.width.__oldValue = planeData.width;
+            controllers.height.__oldValue = planeData.height;
 
-            function updateFromGUI() {
+            // Single onChange handler for all properties
+            function handleGUIChange() {
                 // Handle geometry changes
-                if (widthController.__oldValue !== planeData.width ||
-                    heightController.__oldValue !== planeData.height) {
+                if (controllers.width.__oldValue !== planeData.width ||
+                    controllers.height.__oldValue !== planeData.height) {
 
                     planeData.defaultWidth = planeData.width;
                     planeData.defaultHeight = planeData.height;
@@ -1173,33 +1248,31 @@
 
                     planeData.mesh.scale.set(1, 1, 1);
 
-                    widthController.__oldValue = planeData.width;
-                    heightController.__oldValue = planeData.height;
+                    controllers.width.__oldValue = planeData.width;
+                    controllers.height.__oldValue = planeData.height;
                 }
 
                 // Update position and rotation
-                planeData.mesh.position.set(
-                    planeData.x,
-                    planeData.y,
-                    planeData.z
+                planeData.mesh.position.set(planeData.x, planeData.y, planeData.z);
+                planeData.mesh.rotation.set(
+                    planeData.incline * Math.PI / 180,
+                    planeData.angle * Math.PI / 180,
+                    0
                 );
 
-                planeData.mesh.rotation.set(
-                    planeData.incline * Math.PI / 180,  // X rotation (incline)
-                    planeData.angle * Math.PI / 180,    // Y rotation (angle)
-                    0                                  // Z rotation
-                );
+                // Always capture state after any change
+                captureState();
             }
 
-            // Add listeners
-            widthController.onChange(updateFromGUI);
-            heightController.onChange(updateFromGUI);
-            xController.onChange(updateFromGUI);
-            yController.onChange(updateFromGUI);
-            zController.onChange(updateFromGUI);
-            angleController.onChange(updateFromGUI);
-            inclineController.onChange(updateFromGUI);
+            // Add listeners to all controllers
+            Object.values(controllers).forEach(controller => {
+                if (controller.onChange) {
+                    controller.onChange(handleGUIChange);
+                }
+            });
         }
+
+
         renderer.domElement.addEventListener('click', (event) => {
             const mouse = new THREE.Vector2();
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -1334,6 +1407,7 @@
                     }
                 });
             }
+            captureState();
         }
 
         function calculateGroupCenter() {
@@ -1381,6 +1455,7 @@
             if (selectedPlanes.length > 0) {
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
+            captureState();
         }
 
 
@@ -1435,6 +1510,7 @@
                 if (selectedPlanes.length > 0) {
                     updateGUI(selectedPlanes[selectedPlanes.length - 1]);
                 }
+                captureState();
             });
         }
 
@@ -1473,6 +1549,7 @@
 
             // Re-center the group
             updateGroupPosition();
+            captureState();
         }
 
         function updateGroupPosition() {
@@ -1524,6 +1601,7 @@
 
             // Update the GUI to reflect changes
             updateGUI(planeData);
+            captureState();
         }
 
         // Call this after setting up your scene
@@ -1910,7 +1988,9 @@
                     null
             };
             console.log('Copied selection to clipboard');
+            captureState();
         }
+
 
         function pasteFromClipboard() {
             if (!clipboard) return;
@@ -1935,15 +2015,16 @@
                 newPlane.mesh.scale.copy(planeData.scale);
                 newPlane.mesh.material.color.setHex(planeData.color);
 
-                newPlane.width = planeData.width;
-                newPlane.height = planeData.height;
+                // Update plane data with correct values
+                newPlane.width = planeData.width * planeData.scale.x;
+                newPlane.height = planeData.height * planeData.scale.y;
                 newPlane.defaultWidth = planeData.width;
                 newPlane.defaultHeight = planeData.height;
-
-                // Update plane data
                 newPlane.x = newPlane.mesh.position.x;
                 newPlane.y = newPlane.mesh.position.y;
                 newPlane.z = newPlane.mesh.position.z;
+                newPlane.angle = planeData.rotation.y * (180 / Math.PI);
+                newPlane.incline = planeData.rotation.x * (180 / Math.PI);
                 newPlane.color = planeData.color;
                 newPlane.temperature = planeData.temperature;
 
@@ -1972,10 +2053,16 @@
             // Update transform controls and GUI
             updateTransformControls();
             if (selectedPlanes.length > 0) {
-                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+                // Force GUI update with the correct values
+                const lastPlane = selectedPlanes[selectedPlanes.length - 1];
+                updateGUI(lastPlane);
+
+                // Also update the mesh's userData to match
+                lastPlane.mesh.userData = lastPlane;
             }
 
             console.log('Pasted from clipboard');
+            captureState();
         }
 
 
@@ -2135,6 +2222,132 @@
         // Add event listener to your contour button
         document.getElementById("contourgenerator").addEventListener("click", addContourToSelectedPlane);
         document.getElementById("detail").addEventListener("click", showContourToSelectedPlane);
+
+
+
+        // Replace the current captureState function with this:
+        function captureState(force = false) {
+            // Don't capture during normal operations unless forced
+            if ((transformControlss && transformControlss.dragging) ||
+                (selectedPlaneGroup && transformControlss.object === selectedPlaneGroup)) {
+                if (!force) return;
+            }
+
+            const state = planes.map(plane => ({
+                position: plane.mesh.position.clone(),
+                rotation: plane.mesh.rotation.clone(),
+                scale: plane.mesh.scale.clone(),
+                width: plane.width,
+                height: plane.height,
+                color: plane.color,
+                temperature: plane.temperature,
+                name: plane.name
+            }));
+
+            // If we're in the middle of history (after some undos), discard future states
+            if (historyIndex < history.length - 1) {
+                history = history.slice(0, historyIndex + 1);
+            }
+
+            // Don't capture duplicate states
+            if (history.length > 0) {
+                const lastState = history[history.length - 1];
+                if (JSON.stringify(lastState) === JSON.stringify(state)) {
+                    console.log("Skipping duplicate state capture");
+                    return;
+                }
+            }
+
+            history.push(state);
+            historyIndex = history.length - 1;
+            console.log(`State captured (${historyIndex + 1}/${history.length})`);
+
+            // Limit history size
+            if (history.length > MAX_HISTORY_STEPS) {
+                history.shift();
+                historyIndex--;
+                console.log("Trimmed history to max size");
+            }
+        }
+        // Add this event listener to capture state when dragging ends
+        transformControlss.addEventListener('dragging-changed', function (event) {
+            controls.enabled = !event.value;
+            if (!event.value) {
+                captureState(true); // Force capture when dragging ends
+            }
+            console.log('State captured. History size:', history.length);
+
+        });
+
+        // Replace the current restoreState function with this:
+        // Replace the current restoreState function with this improved version
+        function restoreState(index) {
+            if (index < 0 || index >= history.length) return;
+
+            const state = history[index];
+
+            // First, just clear the selection
+            selectedPlanes = [];
+            transformControlss.detach();
+
+            // Update existing planes instead of recreating them
+            for (let i = 0; i < state.length; i++) {
+                const planeState = state[i];
+
+                // If we have an existing plane at this index, update it
+                if (i < planes.length) {
+                    const plane = planes[i];
+
+                    // Update properties
+                    plane.mesh.position.copy(planeState.position);
+                    plane.mesh.rotation.copy(planeState.rotation);
+                    plane.mesh.scale.copy(planeState.scale);
+                    plane.width = planeState.width;
+                    plane.height = planeState.height;
+                    plane.color = planeState.color;
+                    plane.temperature = planeState.temperature;
+                    plane.name = planeState.name;
+                    plane.mesh.material.color.setHex(planeState.color);
+
+                    // Update derived properties
+                    plane.x = planeState.position.x;
+                    plane.y = planeState.position.y;
+                    plane.z = planeState.position.z;
+                    plane.angle = planeState.rotation.y * (180 / Math.PI);
+                    plane.incline = planeState.rotation.x * (180 / Math.PI);
+                } else {
+                    // If we need more planes than exist, create new ones
+                    const newPlane = createPlane(planeState.width, planeState.height);
+                    newPlane.mesh.position.copy(planeState.position);
+                    newPlane.mesh.rotation.copy(planeState.rotation);
+                    newPlane.mesh.scale.copy(planeState.scale);
+                    newPlane.color = planeState.color;
+                    newPlane.temperature = planeState.temperature;
+                    newPlane.name = planeState.name;
+                    newPlane.mesh.material.color.setHex(planeState.color);
+
+                    // Update derived properties
+                    newPlane.x = planeState.position.x;
+                    newPlane.y = planeState.position.y;
+                    newPlane.z = planeState.position.z;
+                    newPlane.angle = planeState.rotation.y * (180 / Math.PI);
+                    newPlane.incline = planeState.rotation.x * (180 / Math.PI);
+                }
+            }
+
+            // If there are more planes than in the history state, remove the extras
+            while (planes.length > state.length) {
+                const plane = planes.pop();
+                scene.remove(plane.mesh);
+                plane.mesh.geometry.dispose();
+                plane.mesh.material.dispose();
+            }
+
+            // Update GUI
+            gui.destroy();
+            gui = new dat.GUI();
+        }
+
 
 
         // Animation loop
