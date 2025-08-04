@@ -9,8 +9,6 @@
             margin: 0;
         }
 
-
-
         #functionbox {
             width: 250px;
             height: auto;
@@ -656,6 +654,7 @@
 
         // Add these variables near the top with your other variables
         let history = [];
+        let groupDragStartPosition = null;
         let historyIndex = -1;
         const MAX_HISTORY_STEPS = 500; // Prevent memory bloat
         function initializeHistory() {
@@ -1063,7 +1062,10 @@
 
             console.log("Plane updated with new dimensions:", newtargetWidth, newtargetHeight);
         }
-
+        let nextId = 1;
+        function generateId() {
+            return nextId++;
+        }
 
         // Function to create a new plane
         function createPlane(width = 1, height = 1) {
@@ -1081,6 +1083,7 @@
             const defaultName = `Plane ${planes.length + 1}`;
             // Store plane data
             const planeData = {
+                id: generateId(),
                 mesh: plane,
                 width: width,
                 height: height,
@@ -1110,7 +1113,7 @@
             if (history.length === 0) {
                 initializeHistory();
             }
-            captureState(true);
+            captureState("Plane created");
             return planeData;
 
         }
@@ -1121,8 +1124,8 @@
                 return;
             }
 
-            captureState();
-            
+            captureState("Before reset");
+
             if (selectedPlaneGroup) {
                 ungroupPlanes();
             }
@@ -1164,7 +1167,6 @@
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
 
-            captureState();
         }
 
         // Add event listener for the reset button
@@ -1172,6 +1174,8 @@
 
         function deleteplanefn() {
             if (selectedPlanes.length === 0) return;
+
+            captureState("Before delete");
 
             // Delete all selected planes
             selectedPlanes.forEach(planeData => {
@@ -1220,7 +1224,7 @@
                 width: gui.add(planeData, 'width').name('Width').step(0.1),
                 height: gui.add(planeData, 'height').name('Height').step(0.1),
                 x: gui.add(planeData, 'x').name('X-position').step(0.1),
-                y: gui.add(planeData, 'y').name('Y-position').step(0.1),
+                y: gui.add(planeData, 'y').name('Y-position').step(0.01),
                 z: gui.add(planeData, 'z').name('Z-position').step(0.1),
                 angle: gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1),
                 incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
@@ -1326,10 +1330,19 @@
                         }
                     } else {
                         // Regular click - single selection
-                        ungroupPlanes();
-                        planes.forEach(p => p.mesh.material.color.setHex(p.color));
-                        selectedPlanes = [planeData];
-                        planeData.mesh.material.color.setHex(0xffff00);
+                        // Check if this plane is already the only selected plane
+                        if (selectedPlanes.length === 1 && selectedPlanes[0] === planeData) {
+                            // If clicking on the only selected plane, deselect it
+                            selectedPlanes = [];
+                            planeData.mesh.material.color.setHex(planeData.color);
+                            ungroupPlanes();
+                        } else {
+                            // Otherwise, select this plane as the only selection
+                            ungroupPlanes();
+                            planes.forEach(p => p.mesh.material.color.setHex(p.color));
+                            selectedPlanes = [planeData];
+                            planeData.mesh.material.color.setHex(0xffff00);
+                        }
                     }
 
                     // Update transform controls
@@ -1407,7 +1420,7 @@
                     }
                 });
             }
-            captureState();
+            // Don't capture state when creating/updating groups - only capture when the group is actually transformed
         }
 
         function calculateGroupCenter() {
@@ -1455,7 +1468,7 @@
             if (selectedPlanes.length > 0) {
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
-            captureState();
+            // Don't capture state when ungrouping - the visual state doesn't change
         }
 
 
@@ -1476,9 +1489,9 @@
             transformControlss.setSpace('local');
             transformControlss.setMode('translate');
             transformControlss.size = 0.5;
-            transformControlss.setTranslationSnap(0.1);  // Snap translation to 0.1 units
+            transformControlss.setTranslationSnap(0.01);  // Snap translation to 0.1 units
             transformControlss.setRotationSnap(Math.PI / 180); // Snap rotation to 10 degrees
-            transformControlss.setScaleSnap(0.05); // Snap scaling to 0.05 units (5% increments)
+            transformControlss.setScaleSnap(0.1); // Snap scaling to 0.05 units (5% increments)
 
             transformControlss.showX = true;
             transformControlss.showY = true;
@@ -1488,10 +1501,19 @@
             // Disable orbit controls when transforming
             transformControlss.addEventListener('dragging-changed', function (event) {
                 controls.enabled = !event.value;
+                // When dragging starts, record the group's start position
+                if (event.value && selectedPlaneGroup && transformControlss.object === selectedPlaneGroup) {
+                    groupDragStartPosition = selectedPlaneGroup.position.clone();
+                }
                 // When dragging ends (event.value === false)
-                if (!event.value && selectedPlaneGroup && transformControlss.object === selectedPlaneGroup) {
-                    // Commit the group transformation to individual planes
-                    commitGroupTransform();
+                if (!event.value) {
+                    if (selectedPlaneGroup && transformControlss.object === selectedPlaneGroup) {
+                        // Commit the group transformation to individual planes
+                        commitGroupTransform();
+                    } else {
+                        // Capture state for individual plane transformations
+                        captureState("Transform drag ended");
+                    }
                 }
             });
 
@@ -1510,7 +1532,6 @@
                 if (selectedPlanes.length > 0) {
                     updateGUI(selectedPlanes[selectedPlanes.length - 1]);
                 }
-                captureState();
             });
         }
 
@@ -1549,7 +1570,12 @@
 
             // Re-center the group
             updateGroupPosition();
-            captureState();
+
+            // Only capture state if the group was actually moved
+            if (groupDragStartPosition && !groupDragStartPosition.equals(groupPosition)) {
+                captureState();
+            }
+            groupDragStartPosition = null;
         }
 
         function updateGroupPosition() {
@@ -1601,7 +1627,6 @@
 
             // Update the GUI to reflect changes
             updateGUI(planeData);
-            captureState();
         }
 
         // Call this after setting up your scene
@@ -1882,31 +1907,66 @@
 
         // Add this function to handle the contour generation
         function addContourToSelectedPlane() {
-            if (!selectedPlane) {
+            if (selectedPlanes.length === 0) {
                 alert("Please select a plane first");
                 return;
             }
 
-            // Create SVG for contour plot (hidden)
+            const selectedPlane = selectedPlanes[0]; // Use the first selected plane
+
+            // Calculate dimensions based on plane size
+            const gridWidth = Math.round(selectedPlane.width) * 2;
+            const gridHeight = Math.round(selectedPlane.height) * 2;
+            const totalPoints = gridWidth * gridHeight;
+
+            // Calculate SVG dimensions based on plane aspect ratio and size
+            const planeAspectRatio = selectedPlane.width / selectedPlane.height;
+            const planeArea = selectedPlane.width * selectedPlane.height;
+            
+            // Scale base size based on plane area to maintain texture quality
+            // For larger planes, use higher resolution textures
+            let baseSize = 512; // Minimum base size
+            if (planeArea > 25) { // If plane area is larger than 5x5
+                baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100)); // Scale with plane size
+            }
+            
+            let svgWidth, svgHeight;
+            
+            if (planeAspectRatio >= 1) {
+                // Plane is wider than tall
+                svgWidth = baseSize;
+                svgHeight = Math.round(baseSize / planeAspectRatio);
+            } else {
+                // Plane is taller than wide
+                svgHeight = baseSize;
+                svgWidth = Math.round(baseSize * planeAspectRatio);
+            }
+
+            // Update SVG dimensions
             const svg = d3.select("#contour-svg");
+            svg.attr("width", svgWidth).attr("height", svgHeight);
             svg.selectAll("*").remove(); // Clear any existing content
 
-            const svgWidth = +svg.attr("width");
-            const svgHeight = +svg.attr("height");
-
-            // Generate sample data (replace with your actual data)
+            // Generate sample data based on plane dimensions
             const data = {
-                width: 2,
-                height: 2,
-                values: Array.from({ length: 4 }, () => Math.random() * 10)
+                width: gridWidth,
+                height: gridHeight,
+                values: Array.from({ length: totalPoints }, () => Math.random() * 10)
             };
 
-            console.log(data.values);
+            console.log(`Generated ${gridWidth}x${gridHeight} contour data for plane ${selectedPlane.name} with SVG size ${svgWidth}x${svgHeight} (baseSize: ${baseSize}, planeArea: ${planeArea}):`, data.values);
 
             dataarrayforcontour = data.values;
             const n = data.width;
             const m = data.height;
-            const path = d3.geoPath().projection(d3.geoIdentity().scale(svgWidth / n));
+            
+            // Use fitSize to properly scale the projection to the SVG dimensions
+            const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
+                type: "Polygon",
+                coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
+            });
+            
+            const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
             const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(data.values)).nice();
 
@@ -1918,7 +1978,7 @@
                 .attr("d", d => path(contours.contour(data.values, d)))
                 .attr("fill", d => color(d));
 
-            // Convert SVG to Canvas
+            // Convert SVG to Canvas with matching dimensions
             const canvas = document.createElement('canvas');
             canvas.width = svgWidth;
             canvas.height = svgHeight;
@@ -1938,6 +1998,9 @@
                 // Create texture from canvas and apply to selected plane
                 const texture = new THREE.CanvasTexture(canvas);
                 texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.generateMipmaps = false; // Disable mipmaps for better quality on large textures
 
                 // Update the selected plane's material
                 selectedPlane.mesh.material.map = texture;
@@ -1994,6 +2057,8 @@
 
         function pasteFromClipboard() {
             if (!clipboard) return;
+
+            captureState("Before paste");
 
             // Clear current selection
             planes.forEach(p => p.mesh.material.color.setHex(p.color));
@@ -2062,15 +2127,17 @@
             }
 
             console.log('Pasted from clipboard');
-            captureState();
+            captureState("After paste");
         }
 
 
         function showContourToSelectedPlane() {
-            if (!selectedPlane) {
+            if (selectedPlanes.length === 0) {
                 alert("Please select a plane first");
                 return;
             }
+
+            const selectedPlane = selectedPlanes[0]; // Use the first selected plane
 
             // Get modal elements
             const modal = document.getElementById("contourModal");
@@ -2078,22 +2145,66 @@
             const valueDisplay = document.getElementById("valueDisplay");
             const span = document.getElementsByClassName("close")[0];
 
-            // Generate the contour data (same as in your contourgenerator function)
+            // Check if we have contour data, if not generate it based on plane dimensions
+            if (!dataarrayforcontour) {
+                // Calculate dimensions based on plane size
+                const gridWidth = Math.round(selectedPlane.width) * 2;
+                const gridHeight = Math.round(selectedPlane.height) * 2;
+                const totalPoints = gridWidth * gridHeight;
+                
+                // Generate sample data based on plane dimensions
+                dataarrayforcontour = Array.from({ length: totalPoints }, () => Math.random() * 10);
+            }
+
+            // Calculate dimensions based on plane size for display
+            const gridWidth = Math.round(selectedPlane.width) * 2;
+            const gridHeight = Math.round(selectedPlane.height) * 2;
+            
+            // Generate the contour data based on plane dimensions
             const contourData = {
-                width: 2,
-                height: 2,
+                width: gridWidth,
+                height: gridHeight,
                 values: dataarrayforcontour
             };
 
-            // Create SVG for contour plot (hidden)
+            // Calculate SVG dimensions based on plane aspect ratio and size
+            const planeAspectRatio = selectedPlane.width / selectedPlane.height;
+            const planeArea = selectedPlane.width * selectedPlane.height;
+            
+            // Scale base size based on plane area to maintain texture quality
+            // For larger planes, use higher resolution textures
+            let baseSize = 512; // Minimum base size
+            if (planeArea > 25) { // If plane area is larger than 5x5
+                baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100)); // Scale with plane size
+            }
+            
+            let svgWidth, svgHeight;
+            
+            if (planeAspectRatio >= 1) {
+                // Plane is wider than tall
+                svgWidth = baseSize;
+                svgHeight = Math.round(baseSize / planeAspectRatio);
+            } else {
+                // Plane is taller than wide
+                svgHeight = baseSize;
+                svgWidth = Math.round(baseSize * planeAspectRatio);
+            }
+
+            // Update SVG dimensions
             const svg = d3.select("#contour-svg");
+            svg.attr("width", svgWidth).attr("height", svgHeight);
             svg.selectAll("*").remove();
-            const svgWidth = +svg.attr("width");
-            const svgHeight = +svg.attr("height");
 
             const n = contourData.width;
             const m = contourData.height;
-            const path = d3.geoPath().projection(d3.geoIdentity().scale(svgWidth / n));
+            
+            // Use fitSize to properly scale the projection to the SVG dimensions
+            const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
+                type: "Polygon",
+                coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
+            });
+            
+            const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
             const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData.values)).nice();
 
@@ -2105,7 +2216,7 @@
                 .attr("d", d => path(contours.contour(contourData.values, d)))
                 .attr("fill", d => color(d));
 
-            // Convert SVG to Canvas
+            // Convert SVG to Canvas with matching dimensions
             const canvas = document.createElement('canvas');
             canvas.width = svgWidth;
             canvas.height = svgHeight;
@@ -2226,58 +2337,61 @@
 
 
         // Replace the current captureState function with this:
-        function captureState(force = false) {
-            // Don't capture during normal operations unless forced
-            if ((transformControlss && transformControlss.dragging) ||
-                (selectedPlaneGroup && transformControlss.object === selectedPlaneGroup)) {
-                if (!force) return;
-            }
+        // Modify the captureState function to handle all operations
+        function captureState(description = "User action") {
+            // Don't capture during operations unless forced
+            if (transformControlss && transformControlss.dragging) return;
 
-            const state = planes.map(plane => ({
-                position: plane.mesh.position.clone(),
-                rotation: plane.mesh.rotation.clone(),
-                scale: plane.mesh.scale.clone(),
-                width: plane.width,
-                height: plane.height,
-                color: plane.color,
-                temperature: plane.temperature,
-                name: plane.name
-            }));
+            const state = {
+                planes: planes.map(plane => ({
+                    id: plane.id || generateId(), // Add unique IDs
+                    position: plane.mesh.getWorldPosition(new THREE.Vector3()).clone(), // Store world position instead of local
+                    rotation: plane.mesh.rotation.clone(),
+                    scale: plane.mesh.scale.clone(),
+                    width: plane.width,
+                    height: plane.height,
+                    color: plane.color,
+                    temperature: plane.temperature,
+                    name: plane.name,
+                    selected: selectedPlanes.includes(plane)
+                })),
+                groups: selectedPlaneGroup ? {
+                    planeIds: selectedPlanes.map(p => p.id),
+                    position: selectedPlaneGroup.position.clone(),
+                    rotation: selectedPlaneGroup.rotation.clone(),
+                    scale: selectedPlaneGroup.scale.clone()
+                } : null,
+                description: description,
+                timestamp: Date.now(),
+                isPasteOperation: typeof description === 'string' && (description.includes("paste") || description.includes("Paste"))
+            };
 
-            // If we're in the middle of history (after some undos), discard future states
+            // Trim history if needed
             if (historyIndex < history.length - 1) {
                 history = history.slice(0, historyIndex + 1);
             }
 
-            // Don't capture duplicate states
+            // Skip duplicate states
             if (history.length > 0) {
-                const lastState = history[history.length - 1];
-                if (JSON.stringify(lastState) === JSON.stringify(state)) {
-                    console.log("Skipping duplicate state capture");
-                    return;
-                }
+                const last = history[history.length - 1];
+                if (JSON.stringify(last) === JSON.stringify(state)) return;
             }
 
             history.push(state);
             historyIndex = history.length - 1;
-            console.log(`State captured (${historyIndex + 1}/${history.length})`);
 
             // Limit history size
             if (history.length > MAX_HISTORY_STEPS) {
                 history.shift();
                 historyIndex--;
-                console.log("Trimmed history to max size");
             }
-        }
-        // Add this event listener to capture state when dragging ends
-        transformControlss.addEventListener('dragging-changed', function (event) {
-            controls.enabled = !event.value;
-            if (!event.value) {
-                captureState(true); // Force capture when dragging ends
-            }
-            console.log('State captured. History size:', history.length);
 
-        });
+            console.log(`State captured: ${description} - Total planes: ${planes.length}, Selected: ${selectedPlanes.length}`);
+            console.log(`Plane IDs in state: ${state.planes.map(p => p.id).join(', ')}`);
+        }
+
+
+        // Remove duplicate event listener - this functionality is already handled in the main dragging-changed listener
 
         // Replace the current restoreState function with this:
         // Replace the current restoreState function with this improved version
@@ -2285,67 +2399,153 @@
             if (index < 0 || index >= history.length) return;
 
             const state = history[index];
+            console.log(`Restoring state: ${state.description || 'Unknown'}`);
 
-            // First, just clear the selection
+            // Clear current selection and groups
             selectedPlanes = [];
-            transformControlss.detach();
-
-            // Update existing planes instead of recreating them
-            for (let i = 0; i < state.length; i++) {
-                const planeState = state[i];
-
-                // If we have an existing plane at this index, update it
-                if (i < planes.length) {
-                    const plane = planes[i];
-
-                    // Update properties
-                    plane.mesh.position.copy(planeState.position);
-                    plane.mesh.rotation.copy(planeState.rotation);
-                    plane.mesh.scale.copy(planeState.scale);
-                    plane.width = planeState.width;
-                    plane.height = planeState.height;
-                    plane.color = planeState.color;
-                    plane.temperature = planeState.temperature;
-                    plane.name = planeState.name;
-                    plane.mesh.material.color.setHex(planeState.color);
-
-                    // Update derived properties
-                    plane.x = planeState.position.x;
-                    plane.y = planeState.position.y;
-                    plane.z = planeState.position.z;
-                    plane.angle = planeState.rotation.y * (180 / Math.PI);
-                    plane.incline = planeState.rotation.x * (180 / Math.PI);
-                } else {
-                    // If we need more planes than exist, create new ones
-                    const newPlane = createPlane(planeState.width, planeState.height);
-                    newPlane.mesh.position.copy(planeState.position);
-                    newPlane.mesh.rotation.copy(planeState.rotation);
-                    newPlane.mesh.scale.copy(planeState.scale);
-                    newPlane.color = planeState.color;
-                    newPlane.temperature = planeState.temperature;
-                    newPlane.name = planeState.name;
-                    newPlane.mesh.material.color.setHex(planeState.color);
-
-                    // Update derived properties
-                    newPlane.x = planeState.position.x;
-                    newPlane.y = planeState.position.y;
-                    newPlane.z = planeState.position.z;
-                    newPlane.angle = planeState.rotation.y * (180 / Math.PI);
-                    newPlane.incline = planeState.rotation.x * (180 / Math.PI);
-                }
+            if (selectedPlaneGroup) {
+                ungroupPlanes();
             }
 
-            // If there are more planes than in the history state, remove the extras
-            while (planes.length > state.length) {
-                const plane = planes.pop();
-                scene.remove(plane.mesh);
+            // First pass: update existing planes or create new ones
+            const newPlanes = [];
+            state.planes.forEach(planeState => {
+                let plane = planes.find(p => p.id === planeState.id);
+
+                if (!plane) {
+                    // Create new plane
+                    plane = createPlane(planeState.width, planeState.height);
+                    plane.id = planeState.id;
+                    console.log(`Created new plane with ID: ${planeState.id}`);
+                } else {
+                    console.log(`Found existing plane with ID: ${planeState.id}`);
+                }
+
+                // Ensure the plane is in the scene
+                if (!scene.children.includes(plane.mesh)) {
+                    scene.add(plane.mesh);
+                }
+
+                // For paste operations, ensure we're restoring to the exact state
+                if (state.isPasteOperation) {
+                    console.log(`Restoring paste operation state for plane ${planeState.id}`);
+                }
+
+                // Update properties
+                plane.mesh.rotation.copy(planeState.rotation);
+                plane.mesh.scale.copy(planeState.scale);
+                plane.width = planeState.width;
+                plane.height = planeState.height;
+                plane.color = planeState.color;
+                plane.temperature = planeState.temperature;
+                plane.name = planeState.name;
+                plane.mesh.material.color.setHex(planeState.color);
+
+                // Update derived properties
+                plane.x = planeState.position.x;
+                plane.y = planeState.position.y;
+                plane.z = planeState.position.z;
+                plane.angle = planeState.rotation.y * (180 / Math.PI);
+                plane.incline = planeState.rotation.x * (180 / Math.PI);
+
+                if (planeState.selected) {
+                    selectedPlanes.push(plane);
+                    plane.mesh.material.color.setHex(0xffff00);
+                } else {
+                    plane.mesh.material.color.setHex(plane.color);
+                }
+
+                newPlanes.push(plane);
+            });
+
+            // Remove planes that shouldn't exist in this state
+            const planesToRemove = planes.filter(p => !state.planes.some(s => s.id === p.id));
+            planesToRemove.forEach(plane => {
+                console.log(`Removing plane with ID: ${plane.id}`);
+                if (scene.children.includes(plane.mesh)) {
+                    scene.remove(plane.mesh);
+                }
                 plane.mesh.geometry.dispose();
                 plane.mesh.material.dispose();
+            });
+
+            // Update planes array
+            planes.splice(0, planes.length, ...newPlanes);
+
+            // Set positions for all planes first (before grouping)
+            newPlanes.forEach(plane => {
+                const planeState = state.planes.find(p => p.id === plane.id);
+                if (planeState) {
+                    plane.mesh.position.copy(planeState.position);
+                    console.log(`Set plane ${plane.id} position to: ${planeState.position}`);
+                }
+            });
+            
+            // Restore group if needed
+            if (state.groups) {
+                selectedPlanes = planes.filter(p => state.groups.planeIds.includes(p.id));
+                
+                // Create group without calling captureState (we'll do it manually)
+                if (!selectedPlaneGroup) {
+                    selectedPlaneGroup = new THREE.Group();
+                    scene.add(selectedPlaneGroup);
+                    originalPositions = new Map();
+                }
+                
+                // Clear existing planes from group
+                while (selectedPlaneGroup.children.length > 0) {
+                    selectedPlaneGroup.remove(selectedPlaneGroup.children[0]);
+                }
+                
+                // Add planes to group and store their original positions
+                selectedPlanes.forEach(plane => {
+                    const planeState = state.planes.find(p => p.id === plane.id);
+                    if (planeState) {
+                        // Store original world position
+                        originalPositions.set(plane, {
+                            worldPosition: planeState.position.clone(),
+                            parent: scene
+                        });
+                        
+                        // Add to group (position is already set)
+                        selectedPlaneGroup.add(plane.mesh);
+                        
+                        console.log(`Added plane ${plane.id} to group with position: ${plane.mesh.position}`);
+                    }
+                });
+                
+                // Set group position
+                selectedPlaneGroup.position.copy(state.groups.position);
+                selectedPlaneGroup.rotation.copy(state.groups.rotation);
+                selectedPlaneGroup.scale.copy(state.groups.scale);
+                
+                console.log(`Set group position to: ${state.groups.position}`);
+            }
+
+            // Update GUI and controls
+            updateTransformControls();
+            if (selectedPlanes.length > 0) {
+                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
 
             // Update GUI
             gui.destroy();
             gui = new dat.GUI();
+            
+            console.log(`State restoration complete. Total planes: ${planes.length}, Selected: ${selectedPlanes.length}`);
+            console.log(`Current plane IDs: ${planes.map(p => p.id).join(', ')}`);
+            console.log(`Selected plane IDs: ${selectedPlanes.map(p => p.id).join(', ')}`);
+            
+            // Debug: Log final positions of all planes
+            planes.forEach(plane => {
+                const worldPos = plane.mesh.getWorldPosition(new THREE.Vector3());
+                console.log(`Final plane ${plane.id}: local=${plane.mesh.position}, world=${worldPos}`);
+            });
+            
+            if (selectedPlaneGroup) {
+                console.log(`Group position: ${selectedPlaneGroup.position}`);
+                console.log(`Group children: ${selectedPlaneGroup.children.length}`);
+            }
         }
 
 
