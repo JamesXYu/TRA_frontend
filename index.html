@@ -1337,15 +1337,28 @@
                                 createOrUpdateGroup();
                             }
                         } else {
-                            // Remove from selection - but don't remove from scene!
+                            // Remove from selection
                             selectedPlanes.splice(index, 1);
                             planeData.mesh.material.color.setHex(planeData.color);
+
+                            // If the plane is in a group, restore its parent and position
+                            if (selectedPlaneGroup && planeData.mesh.parent === selectedPlaneGroup) {
+                                const original = originalPositions.get(planeData);
+                                selectedPlaneGroup.remove(planeData.mesh);
+                                if (original) {
+                                    original.parent.add(planeData.mesh);
+                                    planeData.mesh.position.copy(original.worldPosition);
+                                }
+                                planeData.mesh.visible = true;
+                            }
 
                             // Update group if we still have multiple planes
                             if (selectedPlanes.length > 1) {
                                 createOrUpdateGroup();
                             } else {
+                                // If only one plane left, disband group and restore visibility for all
                                 ungroupPlanes();
+                                planes.forEach(p => p.mesh.visible = true);
                             }
                         }
                     } else {
@@ -1360,6 +1373,7 @@
                             // Otherwise, select this plane as the only selection
                             ungroupPlanes();
                             planes.forEach(p => p.mesh.material.color.setHex(p.color));
+                            planes.forEach(p => p.mesh.visible = true);
                             selectedPlanes = [planeData];
                             planeData.mesh.material.color.setHex(0xffff00);
                         }
