@@ -658,42 +658,62 @@
         let historyIndex = -1;
         const MAX_HISTORY_STEPS = 500; // Prevent memory bloat
         function initializeHistory() {
-            // Capture initial empty state
+            // Capture initial state with all plane properties
             const initialState = planes.map(plane => ({
-                position: plane.mesh.position.clone(),
+                id: plane.id || generateId(),
+                position: plane.mesh.getWorldPosition(new THREE.Vector3()).clone(),
                 rotation: plane.mesh.rotation.clone(),
                 scale: plane.mesh.scale.clone(),
                 width: plane.width,
                 height: plane.height,
+                // Store default values
+                defaultWidth: plane.defaultWidth,
+                defaultHeight: plane.defaultHeight,
+                defaultX: plane.defaultX,
+                defaultY: plane.defaultY,
+                defaultZ: plane.defaultZ,
+                defaultAngle: plane.defaultAngle,
+                defaultColor: plane.defaultColor,
+                // Store derived properties
+                x: plane.x,
+                y: plane.y,
+                z: plane.z,
+                angle: plane.angle,
+                incline: plane.incline,
                 color: plane.color,
                 temperature: plane.temperature,
-                name: plane.name
+                name: plane.name,
+                selected: false,
+                // Store material properties
+                hasTexture: plane.mesh.material.map !== null,
+                textureData: plane.mesh.material.map ? {
+                    isContourTexture: plane.mesh.material.map.isContourTexture || false,
+                    contourData: plane.mesh.material.map.contourData || null
+                } : null
             }));
 
             history = [initialState];
             historyIndex = 0;
-            console.log("Initial history state captured");
+            console.log("Initial history state captured with full plane properties");
         }
 
 
-        // Add undo/redo functions
+
         function undo() {
             if (historyIndex > 0) {
                 historyIndex--;
-                console.log(`Undo to state ${historyIndex + 1}/${history.length}`);
                 restoreState(historyIndex);
             } else {
-                console.log("Already at earliest state");
+                console.log("No more undo steps available.");
             }
         }
 
         function redo() {
             if (historyIndex < history.length - 1) {
                 historyIndex++;
-                console.log(`Redo to state ${historyIndex + 1}/${history.length}`);
                 restoreState(historyIndex);
             } else {
-                console.log("Already at latest state");
+                console.log("No more redo steps available.");
             }
         }
 
@@ -1695,10 +1715,20 @@
                     name: plane.name,
                     position: plane.mesh.position.toArray(),
                     rotation: plane.mesh.rotation.toArray(),
-                    scale: [1,1,1],
+                    scale: [1, 1, 1],
                     width: plane.width,
                     height: plane.height,
-                    color: plane.color
+                    color: plane.color,
+                    temperature: plane.temperature,
+                    // Include default values for proper import
+                    defaultWidth: plane.defaultWidth,
+                    defaultHeight: plane.defaultHeight,
+                    // Include derived properties
+                    x: plane.x,
+                    y: plane.y,
+                    z: plane.z,
+                    angle: plane.angle,
+                    incline: plane.incline
                 })),
                 scalingFactor: scalingdist ? {
                     measuredDistance: scalingDistance,
@@ -1769,12 +1799,88 @@
             sceneData.planes.forEach(planeData => {
                 const newPlane = createPlane(planeData.width, planeData.height);
                 newPlane.name = planeData.name || `Plane ${planes.length}`;
+
+                // Update the default dimensions to match the imported dimensions
+                newPlane.defaultWidth = planeData.width;
+                newPlane.defaultHeight = planeData.height;
+
+                // Set position and rotation
                 newPlane.mesh.position.fromArray(planeData.position);
                 newPlane.mesh.rotation.fromArray(planeData.rotation);
-                newPlane.mesh.scale.fromArray(planeData.scale);
+
+                // Handle scale properly - if scale is not 1,1,1, we need to adjust the actual dimensions
+                if (planeData.scale && (planeData.scale[0] !== 1 || planeData.scale[1] !== 1)) {
+                    // If there's a scale, apply it to the dimensions
+                    newPlane.width = planeData.width * planeData.scale[0];
+                    newPlane.height = planeData.height * planeData.scale[1];
+                    // Reset scale to 1,1,1 since we've incorporated it into dimensions
+                    newPlane.mesh.scale.set(1, 1, 1);
+                } else {
+                    // No scale or scale is 1,1,1, just use the imported dimensions
+                    newPlane.width = planeData.width;
+                    newPlane.height = planeData.height;
+                    newPlane.mesh.scale.set(1, 1, 1);
+                }
+
+                // Update the mesh geometry to match the new dimensions
+                newPlane.mesh.geometry.dispose();
+                newPlane.mesh.geometry = new THREE.PlaneGeometry(newPlane.width, newPlane.height);
+
+                // Set color and temperature
                 newPlane.color = planeData.color;
                 newPlane.mesh.material.color.setHex(planeData.color);
+                if (planeData.temperature !== undefined) {
+                    newPlane.temperature = planeData.temperature;
+                }
+
+                // Update derived properties - use imported values if available, otherwise calculate from mesh
+                if (planeData.x !== undefined) {
+                    newPlane.x = planeData.x;
+                } else {
+                    newPlane.x = newPlane.mesh.position.x;
+                }
+                if (planeData.y !== undefined) {
+                    newPlane.y = planeData.y;
+                } else {
+                    newPlane.y = newPlane.mesh.position.y;
+                }
+                if (planeData.z !== undefined) {
+                    newPlane.z = planeData.z;
+                } else {
+                    newPlane.z = newPlane.mesh.position.z;
+                }
+                if (planeData.angle !== undefined) {
+                    newPlane.angle = planeData.angle;
+                } else {
+                    newPlane.angle = newPlane.mesh.rotation.y * (180 / Math.PI);
+                }
+                if (planeData.incline !== undefined) {
+                    newPlane.incline = planeData.incline;
+                } else {
+                    newPlane.incline = newPlane.mesh.rotation.x * (180 / Math.PI);
+                }
+
                 updateGUI(newPlane);
+
+                // Force a geometry update to ensure the mesh size matches the stored dimensions
+                if (newPlane.mesh.geometry) {
+                    newPlane.mesh.geometry.dispose();
+                }
+                newPlane.mesh.geometry = new THREE.PlaneGeometry(newPlane.width, newPlane.height);
+
+                // Debug logging
+                console.log(`Imported plane "${newPlane.name}":`, {
+                    width: newPlane.width,
+                    height: newPlane.height,
+                    defaultWidth: newPlane.defaultWidth,
+                    defaultHeight: newPlane.defaultHeight,
+                    scale: newPlane.mesh.scale.toArray(),
+                    position: newPlane.mesh.position.toArray(),
+                    geometry: {
+                        width: newPlane.mesh.geometry.parameters.width,
+                        height: newPlane.mesh.geometry.parameters.height
+                    }
+                });
             });
 
             // Load scaling data
@@ -1782,6 +1888,29 @@
                 scalingDistance = sceneData.scalingFactor.measuredDistance;
                 document.getElementById('scalinginput').value = sceneData.scalingFactor.inputValue;
             }
+
+            // Validate and fix any scaling issues
+            planes.forEach(plane => {
+                // Ensure the mesh geometry matches the stored dimensions
+                const expectedWidth = plane.width;
+                const expectedHeight = plane.height;
+                const actualWidth = plane.mesh.geometry.parameters.width;
+                const actualHeight = plane.mesh.geometry.parameters.height;
+
+                if (Math.abs(expectedWidth - actualWidth) > 0.001 || Math.abs(expectedHeight - actualHeight) > 0.001) {
+                    console.warn(`Fixing size mismatch for plane "${plane.name}":`, {
+                        expected: { width: expectedWidth, height: expectedHeight },
+                        actual: { width: actualWidth, height: actualHeight }
+                    });
+
+                    // Recreate geometry with correct dimensions
+                    plane.mesh.geometry.dispose();
+                    plane.mesh.geometry = new THREE.PlaneGeometry(expectedWidth, expectedHeight);
+
+                    // Reset scale to 1,1,1
+                    plane.mesh.scale.set(1, 1, 1);
+                }
+            });
 
             alert('Scene imported successfully!');
         }
@@ -1813,6 +1942,95 @@
         }
 
         let dataarrayforcontour = null;
+
+        // Generate smoother, more realistic fields for contours
+        function generatePrettyField(n, m, options = {}) {
+            const method = options.method || 'rbf'; // 'rbf' | 'sine'
+            if (method === 'sine') return generateSinusoidalField(n, m, options);
+            return generateRbfField(n, m, options);
+        }
+
+        function generateRbfField(n, m, options = {}) {
+            const numSources = options.numSources || 5;
+            const amplitudeMin = options.amplitudeMin ?? 2;
+            const amplitudeMax = options.amplitudeMax ?? 10;
+            const diag = Math.sqrt(n * n + m * m);
+            const sigmaMin = options.sigmaMin ?? diag * 0.10;
+            const sigmaMax = options.sigmaMax ?? diag * 0.35;
+            const gradientStrength = options.gradientStrength ?? 0.15; // 0..1 small trend
+            const noiseStd = options.noiseStd ?? 0.03; // relative to max amplitude
+
+            const sources = [];
+            for (let i = 0; i < numSources; i++) {
+                sources.push({
+                    cx: Math.random() * (n - 1),
+                    cy: Math.random() * (m - 1),
+                    amp: amplitudeMin + Math.random() * (amplitudeMax - amplitudeMin),
+                    sigma: sigmaMin + Math.random() * (sigmaMax - sigmaMin)
+                });
+            }
+
+            const values = new Array(n * m);
+            let minV = Infinity, maxV = -Infinity;
+            for (let y = 0; y < m; y++) {
+                for (let x = 0; x < n; x++) {
+                    let v = 0;
+                    for (let k = 0; k < sources.length; k++) {
+                        const dx = x - sources[k].cx;
+                        const dy = y - sources[k].cy;
+                        const r2 = dx * dx + dy * dy;
+                        const sigma2 = 2 * sources[k].sigma * sources[k].sigma;
+                        v += sources[k].amp * Math.exp(-r2 / sigma2);
+                    }
+                    // Add a gentle gradient/trend to avoid overly symmetric blobs
+                    v += gradientStrength * (x / n * amplitudeMax * 0.5 + y / m * amplitudeMax * 0.5);
+                    // Add a tiny amount of noise for texture
+                    v += (Math.random() * 2 - 1) * noiseStd * amplitudeMax;
+                    values[y * n + x] = v;
+                    if (v < minV) minV = v;
+                    if (v > maxV) maxV = v;
+                }
+            }
+            // Normalize to a friendly range (e.g., 0..10)
+            const range = maxV - minV || 1;
+            for (let i = 0; i < values.length; i++) {
+                values[i] = 10 * (values[i] - minV) / range;
+            }
+            return values;
+        }
+
+        function generateSinusoidalField(n, m, options = {}) {
+            const A1 = options.A1 ?? 3, A2 = options.A2 ?? 2.5, A3 = options.A3 ?? 2;
+            const fx1 = options.fx1 ?? (2 * Math.PI / (n * 0.9));
+            const fy1 = options.fy1 ?? (2 * Math.PI / (m * 0.7));
+            const fx2 = options.fx2 ?? (2 * Math.PI / (n * 0.35));
+            const fy2 = options.fy2 ?? (2 * Math.PI / (m * 0.5));
+            const p1 = options.p1 ?? Math.random() * Math.PI * 2;
+            const p2 = options.p2 ?? Math.random() * Math.PI * 2;
+            const p3 = options.p3 ?? Math.random() * Math.PI * 2;
+            const baseline = options.baseline ?? 2.5;
+            const noiseStd = options.noiseStd ?? 0.05;
+
+            const values = new Array(n * m);
+            let minV = Infinity, maxV = -Infinity;
+            for (let y = 0; y < m; y++) {
+                for (let x = 0; x < n; x++) {
+                    let v = baseline
+                        + A1 * Math.sin(fx1 * x + p1)
+                        + A2 * Math.cos(fy1 * y + p2)
+                        + A3 * Math.sin(fx2 * x + fy2 * y + p3)
+                        + (Math.random() * 2 - 1) * noiseStd;
+                    values[y * n + x] = v;
+                    if (v < minV) minV = v;
+                    if (v > maxV) maxV = v;
+                }
+            }
+            const range = maxV - minV || 1;
+            for (let i = 0; i < values.length; i++) {
+                values[i] = 10 * (values[i] - minV) / range;
+            }
+            return values;
+        }
 
         function generatePointsOnPlane(plane, rows = 11, cols = 11) {
             const points = [];
@@ -1922,16 +2140,16 @@
             // Calculate SVG dimensions based on plane aspect ratio and size
             const planeAspectRatio = selectedPlane.width / selectedPlane.height;
             const planeArea = selectedPlane.width * selectedPlane.height;
-            
+
             // Scale base size based on plane area to maintain texture quality
             // For larger planes, use higher resolution textures
             let baseSize = 512; // Minimum base size
             if (planeArea > 25) { // If plane area is larger than 5x5
                 baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100)); // Scale with plane size
             }
-            
+
             let svgWidth, svgHeight;
-            
+
             if (planeAspectRatio >= 1) {
                 // Plane is wider than tall
                 svgWidth = baseSize;
@@ -1947,11 +2165,11 @@
             svg.attr("width", svgWidth).attr("height", svgHeight);
             svg.selectAll("*").remove(); // Clear any existing content
 
-            // Generate sample data based on plane dimensions
+            // Generate smoother sample data based on plane dimensions
             const data = {
                 width: gridWidth,
                 height: gridHeight,
-                values: Array.from({ length: totalPoints }, () => Math.random() * 10)
+                values: generatePrettyField(gridWidth, gridHeight, { method: 'rbf' })
             };
 
             console.log(`Generated ${gridWidth}x${gridHeight} contour data for plane ${selectedPlane.name} with SVG size ${svgWidth}x${svgHeight} (baseSize: ${baseSize}, planeArea: ${planeArea}):`, data.values);
@@ -1959,13 +2177,13 @@
             dataarrayforcontour = data.values;
             const n = data.width;
             const m = data.height;
-            
+
             // Use fitSize to properly scale the projection to the SVG dimensions
             const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
                 type: "Polygon",
                 coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
             });
-            
+
             const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
             const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(data.values)).nice();
@@ -2001,6 +2219,10 @@
                 texture.minFilter = THREE.LinearFilter;
                 texture.magFilter = THREE.LinearFilter;
                 texture.generateMipmaps = false; // Disable mipmaps for better quality on large textures
+
+                // Mark as contour texture for state capture
+                texture.isContourTexture = true;
+                texture.contourData = data.values;
 
                 // Update the selected plane's material
                 selectedPlane.mesh.material.map = texture;
@@ -2150,16 +2372,14 @@
                 // Calculate dimensions based on plane size
                 const gridWidth = Math.round(selectedPlane.width) * 2;
                 const gridHeight = Math.round(selectedPlane.height) * 2;
-                const totalPoints = gridWidth * gridHeight;
-                
-                // Generate sample data based on plane dimensions
-                dataarrayforcontour = Array.from({ length: totalPoints }, () => Math.random() * 10);
+                // Generate smoother sample data for the modal display as well
+                dataarrayforcontour = generatePrettyField(gridWidth, gridHeight, { method: 'rbf' });
             }
 
             // Calculate dimensions based on plane size for display
             const gridWidth = Math.round(selectedPlane.width) * 2;
             const gridHeight = Math.round(selectedPlane.height) * 2;
-            
+
             // Generate the contour data based on plane dimensions
             const contourData = {
                 width: gridWidth,
@@ -2170,16 +2390,16 @@
             // Calculate SVG dimensions based on plane aspect ratio and size
             const planeAspectRatio = selectedPlane.width / selectedPlane.height;
             const planeArea = selectedPlane.width * selectedPlane.height;
-            
+
             // Scale base size based on plane area to maintain texture quality
             // For larger planes, use higher resolution textures
             let baseSize = 512; // Minimum base size
             if (planeArea > 25) { // If plane area is larger than 5x5
                 baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100)); // Scale with plane size
             }
-            
+
             let svgWidth, svgHeight;
-            
+
             if (planeAspectRatio >= 1) {
                 // Plane is wider than tall
                 svgWidth = baseSize;
@@ -2197,13 +2417,13 @@
 
             const n = contourData.width;
             const m = contourData.height;
-            
+
             // Use fitSize to properly scale the projection to the SVG dimensions
             const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
                 type: "Polygon",
                 coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
             });
-            
+
             const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
             const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData.values)).nice();
@@ -2336,8 +2556,7 @@
 
 
 
-        // Replace the current captureState function with this:
-        // Modify the captureState function to handle all operations
+        // Updated captureState function to handle all plane properties and new functionality
         function captureState(description = "User action") {
             // Don't capture during operations unless forced
             if (transformControlss && transformControlss.dragging) return;
@@ -2350,16 +2569,52 @@
                     scale: plane.mesh.scale.clone(),
                     width: plane.width,
                     height: plane.height,
+                    // Store default values for reset functionality
+                    defaultWidth: plane.defaultWidth,
+                    defaultHeight: plane.defaultHeight,
+                    defaultX: plane.defaultX,
+                    defaultY: plane.defaultY,
+                    defaultZ: plane.defaultZ,
+                    defaultAngle: plane.defaultAngle,
+                    defaultColor: plane.defaultColor,
+                    // Store derived properties
+                    x: plane.x,
+                    y: plane.y,
+                    z: plane.z,
+                    angle: plane.angle,
+                    incline: plane.incline,
                     color: plane.color,
                     temperature: plane.temperature,
                     name: plane.name,
-                    selected: selectedPlanes.includes(plane)
+                    selected: selectedPlanes.includes(plane),
+                    // Store material properties including texture information
+                    hasTexture: plane.mesh.material.map !== null,
+                    textureData: plane.mesh.material.map ? {
+                        isContourTexture: plane.mesh.material.map.isContourTexture || false,
+                        contourData: plane.mesh.material.map.contourData || null
+                    } : null
                 })),
                 groups: selectedPlaneGroup ? {
                     planeIds: selectedPlanes.map(p => p.id),
                     position: selectedPlaneGroup.position.clone(),
                     rotation: selectedPlaneGroup.rotation.clone(),
                     scale: selectedPlaneGroup.scale.clone()
+                } : null,
+                // Store scene state
+                imagePlane: {
+                    visible: imagePlane.visible,
+                    position: imagePlane.position.clone(),
+                    rotation: imagePlane.rotation.clone(),
+                    scale: imagePlane.scale.clone(),
+                    geometry: {
+                        width: imagePlane.geometry.parameters.width,
+                        height: imagePlane.geometry.parameters.height
+                    }
+                },
+                // Store contour data if available
+                contourData: dataarrayforcontour ? {
+                    values: dataarrayforcontour,
+                    timestamp: Date.now()
                 } : null,
                 description: description,
                 timestamp: Date.now(),
@@ -2393,8 +2648,7 @@
 
         // Remove duplicate event listener - this functionality is already handled in the main dragging-changed listener
 
-        // Replace the current restoreState function with this:
-        // Replace the current restoreState function with this improved version
+        // Updated restoreState function to handle all plane properties and new functionality
         function restoreState(index) {
             if (index < 0 || index >= history.length) return;
 
@@ -2431,7 +2685,16 @@
                     console.log(`Restoring paste operation state for plane ${planeState.id}`);
                 }
 
-                // Update properties
+                // Update all plane properties including defaults
+                if (planeState.defaultWidth !== undefined) plane.defaultWidth = planeState.defaultWidth;
+                if (planeState.defaultHeight !== undefined) plane.defaultHeight = planeState.defaultHeight;
+                if (planeState.defaultX !== undefined) plane.defaultX = planeState.defaultX;
+                if (planeState.defaultY !== undefined) plane.defaultY = planeState.defaultY;
+                if (planeState.defaultZ !== undefined) plane.defaultZ = planeState.defaultZ;
+                if (planeState.defaultAngle !== undefined) plane.defaultAngle = planeState.defaultAngle;
+                if (planeState.defaultColor !== undefined) plane.defaultColor = planeState.defaultColor;
+
+                // Update current properties
                 plane.mesh.rotation.copy(planeState.rotation);
                 plane.mesh.scale.copy(planeState.scale);
                 plane.width = planeState.width;
@@ -2447,6 +2710,14 @@
                 plane.z = planeState.position.z;
                 plane.angle = planeState.rotation.y * (180 / Math.PI);
                 plane.incline = planeState.rotation.x * (180 / Math.PI);
+
+                // Handle texture restoration if available
+                if (planeState.hasTexture && planeState.textureData) {
+                    if (planeState.textureData.isContourTexture && planeState.textureData.contourData) {
+                        // Restore contour texture
+                        restoreContourTexture(plane, planeState.textureData.contourData);
+                    }
+                }
 
                 if (planeState.selected) {
                     selectedPlanes.push(plane);
@@ -2480,23 +2751,23 @@
                     console.log(`Set plane ${plane.id} position to: ${planeState.position}`);
                 }
             });
-            
+
             // Restore group if needed
             if (state.groups) {
                 selectedPlanes = planes.filter(p => state.groups.planeIds.includes(p.id));
-                
+
                 // Create group without calling captureState (we'll do it manually)
                 if (!selectedPlaneGroup) {
                     selectedPlaneGroup = new THREE.Group();
                     scene.add(selectedPlaneGroup);
                     originalPositions = new Map();
                 }
-                
+
                 // Clear existing planes from group
                 while (selectedPlaneGroup.children.length > 0) {
                     selectedPlaneGroup.remove(selectedPlaneGroup.children[0]);
                 }
-                
+
                 // Add planes to group and store their original positions
                 selectedPlanes.forEach(plane => {
                     const planeState = state.planes.find(p => p.id === plane.id);
@@ -2506,20 +2777,43 @@
                             worldPosition: planeState.position.clone(),
                             parent: scene
                         });
-                        
+
                         // Add to group (position is already set)
                         selectedPlaneGroup.add(plane.mesh);
-                        
+
                         console.log(`Added plane ${plane.id} to group with position: ${plane.mesh.position}`);
                     }
                 });
-                
+
                 // Set group position
                 selectedPlaneGroup.position.copy(state.groups.position);
                 selectedPlaneGroup.rotation.copy(state.groups.rotation);
                 selectedPlaneGroup.scale.copy(state.groups.scale);
-                
+
                 console.log(`Set group position to: ${state.groups.position}`);
+            }
+
+            // Restore image plane state if available
+            if (state.imagePlane) {
+                imagePlane.visible = state.imagePlane.visible;
+                imagePlane.position.copy(state.imagePlane.position);
+                imagePlane.rotation.copy(state.imagePlane.rotation);
+                imagePlane.scale.copy(state.imagePlane.scale);
+
+                // Update geometry if dimensions changed
+                if (state.imagePlane.geometry) {
+                    imagePlane.geometry.dispose();
+                    imagePlane.geometry = new THREE.PlaneGeometry(
+                        state.imagePlane.geometry.width,
+                        state.imagePlane.geometry.height
+                    );
+                }
+            }
+
+            // Restore contour data if available
+            if (state.contourData && state.contourData.values) {
+                dataarrayforcontour = state.contourData.values;
+                console.log(`Restored contour data with ${dataarrayforcontour.length} values`);
             }
 
             // Update GUI and controls
@@ -2531,20 +2825,105 @@
             // Update GUI
             gui.destroy();
             gui = new dat.GUI();
-            
+
             console.log(`State restoration complete. Total planes: ${planes.length}, Selected: ${selectedPlanes.length}`);
             console.log(`Current plane IDs: ${planes.map(p => p.id).join(', ')}`);
             console.log(`Selected plane IDs: ${selectedPlanes.map(p => p.id).join(', ')}`);
-            
+
             // Debug: Log final positions of all planes
             planes.forEach(plane => {
                 const worldPos = plane.mesh.getWorldPosition(new THREE.Vector3());
                 console.log(`Final plane ${plane.id}: local=${plane.mesh.position}, world=${worldPos}`);
             });
-            
+
             if (selectedPlaneGroup) {
                 console.log(`Group position: ${selectedPlaneGroup.position}`);
                 console.log(`Group children: ${selectedPlaneGroup.children.length}`);
+            }
+        }
+
+        // Helper function to restore contour textures
+        function restoreContourTexture(plane, contourData) {
+            try {
+                // Create a new canvas with the contour data
+                const gridWidth = Math.round(plane.width) * 2;
+                const gridHeight = Math.round(plane.height) * 2;
+
+                // Calculate SVG dimensions based on plane aspect ratio
+                const planeAspectRatio = plane.width / plane.height;
+                let baseSize = 512;
+                if (plane.width * plane.height > 25) {
+                    baseSize = Math.max(512, Math.round(Math.sqrt(plane.width * plane.height) * 100));
+                }
+
+                let svgWidth, svgHeight;
+                if (planeAspectRatio >= 1) {
+                    svgWidth = baseSize;
+                    svgHeight = Math.round(baseSize / planeAspectRatio);
+                } else {
+                    svgHeight = baseSize;
+                    svgWidth = Math.round(baseSize * planeAspectRatio);
+                }
+
+                // Create SVG and generate contour
+                const svg = d3.select("#contour-svg");
+                svg.attr("width", svgWidth).attr("height", svgHeight);
+                svg.selectAll("*").remove();
+
+                const n = gridWidth;
+                const m = gridHeight;
+
+                const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
+                    type: "Polygon",
+                    coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
+                });
+
+                const path = d3.geoPath().projection(projection);
+                const contours = d3.contours().size([n, m]);
+                const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData)).nice();
+
+                svg.append("g")
+                    .attr("stroke", "black")
+                    .selectAll()
+                    .data(color.ticks(20))
+                    .join("path")
+                    .attr("d", d => path(contours.contour(contourData, d)))
+                    .attr("fill", d => color(d));
+
+                // Convert SVG to texture
+                const canvas = document.createElement('canvas');
+                canvas.width = svgWidth;
+                canvas.height = svgHeight;
+                const ctx = canvas.getContext('2d');
+
+                const svgString = new XMLSerializer().serializeToString(svg.node());
+                const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                const img = new Image();
+                img.onload = function () {
+                    ctx.drawImage(img, 0, 0);
+                    URL.revokeObjectURL(url);
+
+                    const texture = new THREE.CanvasTexture(canvas);
+                    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                    texture.minFilter = THREE.LinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.generateMipmaps = false;
+
+                    // Mark as contour texture for future state captures
+                    texture.isContourTexture = true;
+                    texture.contourData = contourData;
+
+                    plane.mesh.material.map = texture;
+                    plane.mesh.material.needsUpdate = true;
+                    plane.mesh.material.color.set(0xffffff);
+
+                    console.log(`Restored contour texture for plane ${plane.id}`);
+                };
+                img.src = url;
+            } catch (error) {
+                console.error(`Error restoring contour texture for plane ${plane.id}:`, error);
             }
         }
 
@@ -2575,4 +2954,3 @@
 </body>
 
 </html>
-
