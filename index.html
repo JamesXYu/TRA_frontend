@@ -541,6 +541,25 @@
             margin-left: 0 !important;
         }
 
+        .dg .c select {
+            height: 34px !important;
+            font-size: 20px !important;
+            background: #555 !important;
+            color: white !important;
+            border: 1px solid #666 !important;
+            border-radius: 4px !important;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            width: 102% !important;
+            margin-left: -7px !important;
+        }
+
+        .dg .c select option {
+            border-radius: 8px;
+            padding: 4px 8px;
+        }
+        
+
         .dg .c .slider {
             display: none !important;
         }
@@ -682,6 +701,7 @@
                 incline: plane.incline,
                 color: plane.color,
                 temperature: plane.temperature,
+                type: plane.type,
                 name: plane.name,
                 selected: false,
                 // Store material properties
@@ -1122,7 +1142,8 @@
                 angle: plane.rotation.y * 180 / Math.PI,
                 incline: plane.rotation.x * 180 / Math.PI,
                 color: material.color.getHex(),
-                temperature: 30
+                temperature: 30,
+                type: "receiver"
             };
 
             planes.push(planeData);
@@ -1248,7 +1269,8 @@
                 z: gui.add(planeData, 'z').name('Z-position').step(0.1),
                 angle: gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1),
                 incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
-                temp: gui.add(planeData, "temperature").name("Temperature")
+                temp: gui.add(planeData, "temperature").name("Temperature"),
+                type: gui.add(planeData, "type", ["Receiver", "Emitter", "Inert"]).name("Type"),
             };
 
             // Track previous values
@@ -1734,6 +1756,7 @@
                     height: plane.height,
                     color: plane.color,
                     temperature: plane.temperature,
+                    type: plane.type,
                     // Include default values for proper import
                     defaultWidth: plane.defaultWidth,
                     defaultHeight: plane.defaultHeight,
@@ -1846,7 +1869,9 @@
                 if (planeData.temperature !== undefined) {
                     newPlane.temperature = planeData.temperature;
                 }
-
+                if (planeData.type !== undefined) {
+                    newPlane.type = planeData.type;
+                }
                 // Update derived properties - use imported values if available, otherwise calculate from mesh
                 if (planeData.x !== undefined) {
                     newPlane.x = planeData.x;
@@ -2280,7 +2305,8 @@
                     rotation: plane.mesh.rotation.clone(),
                     scale: plane.mesh.scale.clone(),
                     color: plane.color,
-                    temperature: plane.temperature
+                    temperature: plane.temperature,
+                    type: plane.type
                 })),
                 relativePositions: selectedPlaneGroup ?
                     selectedPlanes.map(plane => plane.mesh.position.clone()) :
@@ -2328,6 +2354,7 @@
                 newPlane.incline = planeData.rotation.x * (180 / Math.PI);
                 newPlane.color = planeData.color;
                 newPlane.temperature = planeData.temperature;
+                newPlane.type = planeData.type;
 
                 // Select the new plane
                 newPlanes.push(newPlane);
@@ -2599,6 +2626,7 @@
                     incline: plane.incline,
                     color: plane.color,
                     temperature: plane.temperature,
+                    type: plane.type,
                     name: plane.name,
                     selected: selectedPlanes.includes(plane),
                     // Store material properties including texture information
@@ -2715,6 +2743,7 @@
                 plane.height = planeState.height;
                 plane.color = planeState.color;
                 plane.temperature = planeState.temperature;
+                plane.type = planeState.type;
                 plane.name = planeState.name;
                 plane.mesh.material.color.setHex(planeState.color);
 
