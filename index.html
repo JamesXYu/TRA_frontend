@@ -594,6 +594,17 @@
             font-weight: 500 !important;
         }
 
+        /* Make checkbox bigger to fit the larger GUI */
+        .dg .cr.boolean input[type="checkbox"] {
+            width: 20px !important;
+            height: 20px !important;
+        }
+
+        .dg .cr.boolean .checkbox {
+            width: 20px !important;
+            height: 20px !important;
+        }
+
         .dg.main .close-button {
             display: none !important;
         }
@@ -666,6 +677,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineGeometry.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineMaterial.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/Line2.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/renderers/CSS2DRenderer.js"></script>
 
     <script>
 
@@ -841,6 +853,65 @@
         // Add a grid (hidden by default)
         const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
         scene.add(grid);
+
+        // Add CSS2DRenderer for axis labels
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        // Create axis indicator labels
+        function createAxisLabel(text, position, color) {
+            const labelDiv = document.createElement('div');
+            labelDiv.textContent = text;
+            labelDiv.style.color = '#ffffff'; // White text
+            labelDiv.style.fontSize = '24px';
+            labelDiv.style.fontWeight = 'bold';
+            labelDiv.style.fontFamily = 'Arial, sans-serif';
+            labelDiv.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)'; // Black shadow for contrast
+            labelDiv.style.pointerEvents = 'none';
+            
+            const label = new THREE.CSS2DObject(labelDiv);
+            label.position.copy(position);
+            return label;
+        }
+
+        // Add axis labels (positioned further away)
+        const xLabel = createAxisLabel('+X', new THREE.Vector3(70, 0, 0), '#ff0000');
+        const xNegLabel = createAxisLabel('-X', new THREE.Vector3(-70, 0, 0), '#ff0000');
+        const zLabel = createAxisLabel('+Z', new THREE.Vector3(0, 0, 70), '#0000ff');
+        const zNegLabel = createAxisLabel('-Z', new THREE.Vector3(0, 0, -70), '#0000ff');
+
+        scene.add(xLabel);
+        scene.add(xNegLabel);
+        scene.add(zLabel);
+        scene.add(zNegLabel);
+
+        // Add colorful axis lines
+        function createAxisLine(origin, direction, color, length = 10) {
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+                origin,
+                new THREE.Vector3().copy(origin).add(direction.clone().multiplyScalar(length))
+            ]);
+            const material = new THREE.LineBasicMaterial({ 
+                color: color, 
+                linewidth: 5,
+                depthTest: false,  // Disable depth testing to prevent z-fighting
+                transparent: true,
+                opacity: 0.8
+            });
+            const line = new THREE.Line(geometry, material);
+            return line;
+        }
+
+        // Create axis lines (positioned slightly above grid to avoid z-fighting)
+        const xAxis = createAxisLine(new THREE.Vector3(-70, 0.1, 0), new THREE.Vector3(1, 0, 0), 0xff0000, 140);
+        const zAxis = createAxisLine(new THREE.Vector3(0, 0.1, -70), new THREE.Vector3(0, 0, 1), 0x0000ff, 140);
+
+        scene.add(xAxis);
+        scene.add(zAxis);
 
         // Create a plane for the image (initially invisible)
         const planeGeometry = new THREE.PlaneGeometry(10, 10);
@@ -1143,7 +1214,8 @@
                 incline: plane.rotation.x * 180 / Math.PI,
                 color: material.color.getHex(),
                 temperature: 30,
-                type: "receiver"
+                type: "receiver",
+                positive: true
             };
 
             planes.push(planeData);
@@ -1271,6 +1343,7 @@
                 incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
                 temp: gui.add(planeData, "temperature").name("Temperature"),
                 type: gui.add(planeData, "type", ["Receiver", "Emitter", "Inert"]).name("Type"),
+                positive: gui.add(planeData, "positive").name("X-positive"),
             };
 
             // Track previous values
@@ -1872,6 +1945,11 @@
                 if (planeData.type !== undefined) {
                     newPlane.type = planeData.type;
                 }
+                if (planeData.positive !== undefined) {
+                    newPlane.positive = planeData.positive;
+                } else {
+                    newPlane.positive = true; // Default to true for backward compatibility
+                }
                 // Update derived properties - use imported values if available, otherwise calculate from mesh
                 if (planeData.x !== undefined) {
                     newPlane.x = planeData.x;
@@ -2125,17 +2203,137 @@
         }
 
         function Pointsinfo() {
-            const exportData = planes.map(plane => {
-                const points = generatePointsOnPlane(plane).map(point => [
-                    point.position.x,
-                    point.position.y,
-                    point.position.z
-                ]);
+            const exportData = planes
+                .filter(plane => plane.type === "Receiver" || plane.type === "Emitter") // Process both Receiver and Emitter planes
+                .map(plane => {
+                    if (plane.type === "Receiver") {
+                        // For Receiver planes: generate points and normal
+                        const points = generatePointsOnPlane(plane).map(point => [
+                            Math.round(point.position.x * 100) / 100,
+                            Math.round(point.position.y * 100) / 100,
+                            Math.round(point.position.z * 100) / 100
+                        ]);
 
-                return {
-                    [plane.name || "Unnamed"]: points
-                };
-            });
+                        // Calculate the normal vector of the plane
+                        // Start with the default normal (0, 1, 0) for a horizontal plane
+                        const normal = new THREE.Vector3(0, 1, 0);
+                        
+                        // Apply the same rotation transformations as used in generatePointsOnPlane
+                        const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                        const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                        const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                        const rotationMatrix = new THREE.Matrix4()
+                            .multiply(makeHorizontal)
+                            .multiply(rotationX)
+                            .multiply(rotationY);
+                        
+                        // Apply the rotation to get the world normal
+                        normal.applyMatrix4(rotationMatrix);
+
+                        // Apply positive/negative direction based on the positive checkbox
+                        if (plane.positive) {
+                            // If positive is checked, ensure normal points in positive direction
+                            // Check the dominant axis and ensure it's positive
+                            const absX = Math.abs(normal.x);
+                            const absY = Math.abs(normal.y);
+                            const absZ = Math.abs(normal.z);
+                            
+                            // Find the dominant axis
+                            if (absX >= absY && absX >= absZ) {
+                                // X is dominant - ensure it's positive
+                                if (normal.x < 0) {
+                                    normal.negate();
+                                }
+                            } else if (absY >= absX && absY >= absZ) {
+                                // Y is dominant - ensure it's positive
+                                if (normal.y < 0) {
+                                    normal.negate();
+                                }
+                            } else {
+                                // Z is dominant - ensure it's positive
+                                if (normal.z < 0) {
+                                    normal.negate();
+                                }
+                            }
+                        } else {
+                            // If positive is unchecked, ensure normal points in negative direction
+                            // Check the dominant axis and ensure it's negative
+                            const absX = Math.abs(normal.x);
+                            const absY = Math.abs(normal.y);
+                            const absZ = Math.abs(normal.z);
+                            
+                            // Find the dominant axis
+                            if (absX >= absY && absX >= absZ) {
+                                // X is dominant - ensure it's negative
+                                if (normal.x > 0) {
+                                    normal.negate();
+                                }
+                            } else if (absY >= absX && absY >= absZ) {
+                                // Y is dominant - ensure it's negative
+                                if (normal.y > 0) {
+                                    normal.negate();
+                                }
+                            } else {
+                                // Z is dominant - ensure it's negative
+                                if (normal.z > 0) {
+                                    normal.negate();
+                                }
+                            }
+                        }
+
+                        return {
+                            [plane.name || "Unnamed"]: {
+                                type: "Receiver",
+                                points: points,
+                                normal: [
+                                    Math.round(normal.x * 100) / 100,
+                                    Math.round(normal.y * 100) / 100,
+                                    Math.round(normal.z * 100) / 100
+                                ]
+                            }
+                        };
+                    } else if (plane.type === "Emitter") {
+                        // For Emitter planes: calculate four corner coordinates
+                        const width = plane.width;
+                        const height = plane.height;
+                        
+                        // Define the four corners in local coordinates (before rotation)
+                        const corners = [
+                            new THREE.Vector3(-width/2, 0, -height/2),  // Bottom-left
+                            new THREE.Vector3(width/2, 0, -height/2),   // Bottom-right
+                            new THREE.Vector3(width/2, 0, height/2),    // Top-right
+                            new THREE.Vector3(-width/2, 0, height/2)     // Top-left
+                        ];
+                        
+                        // Apply the same rotation transformations as used in generatePointsOnPlane
+                        const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                        const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                        const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                        const rotationMatrix = new THREE.Matrix4()
+                            .multiply(makeHorizontal)
+                            .multiply(rotationX)
+                            .multiply(rotationY);
+                        
+                        // Transform corners to world coordinates
+                        const worldCorners = corners.map(corner => {
+                            corner.applyMatrix4(rotationMatrix);
+                            // Add plane position offset
+                            corner.add(new THREE.Vector3(plane.x, plane.y, plane.z));
+                            return [
+                                Math.round(corner.x * 100) / 100,
+                                Math.round(corner.y * 100) / 100,
+                                Math.round(corner.z * 100) / 100
+                            ];
+                        });
+
+                        return {
+                            [plane.name || "Unnamed"]: {
+                                type: "Emitter",
+                                corners: worldCorners
+                            }
+                        };
+                    }
+                });
 
             // Create a JSON string with pretty formatting (2-space indentation)
             const jsonString = JSON.stringify(exportData, null, 2);
@@ -2306,7 +2504,8 @@
                     scale: plane.mesh.scale.clone(),
                     color: plane.color,
                     temperature: plane.temperature,
-                    type: plane.type
+                    type: plane.type,
+                    positive: plane.positive
                 })),
                 relativePositions: selectedPlaneGroup ?
                     selectedPlanes.map(plane => plane.mesh.position.clone()) :
@@ -2355,6 +2554,7 @@
                 newPlane.color = planeData.color;
                 newPlane.temperature = planeData.temperature;
                 newPlane.type = planeData.type;
+                newPlane.positive = planeData.positive !== undefined ? planeData.positive : true;
 
                 // Select the new plane
                 newPlanes.push(newPlane);
@@ -2745,6 +2945,7 @@
                 plane.temperature = planeState.temperature;
                 plane.type = planeState.type;
                 plane.name = planeState.name;
+                plane.positive = planeState.positive !== undefined ? planeState.positive : true;
                 plane.mesh.material.color.setHex(planeState.color);
 
                 // Update derived properties
@@ -2977,6 +3178,7 @@
             requestAnimationFrame(animate);
             controls.update();
             renderer.render(scene, activeCamera);
+            labelRenderer.render(scene, activeCamera);
         }
         animate();
 
@@ -2986,6 +3188,7 @@
             cameras.perspective.updateProjectionMatrix();
             activeCamera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
             updateOrthoCameras();
 
             // Update transform controls if they exist
