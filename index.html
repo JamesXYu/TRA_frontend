@@ -653,11 +653,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/TransformControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-contour@3"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineSegmentsGeometry.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineSegments2.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineGeometry.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/LineMaterial.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/lines/Line2.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/renderers/CSS2DRenderer.js"></script>
 
     <script>
@@ -934,55 +929,22 @@
                 updateOrthoCameras();
             }
 
-            // Toggle wireframe based on view
+            // Toggle top view lines based on camera
             const isTopView = (camera === cameras.top);
 
-            // First, clean up any existing wireframe lines from all planes
+            // Clean up existing top view lines
             planes.forEach(plane => {
-                if (plane.mesh.userData.wireframeLine) {
-                    scene.remove(plane.mesh.userData.wireframeLine);
-                    plane.mesh.userData.wireframeLine = null;
+                if (plane.mesh.userData.topViewLine) {
+                    scene.remove(plane.mesh.userData.topViewLine);
+                    plane.mesh.userData.topViewLine = null;
                 }
                 plane.mesh.visible = true; // Make sure all planes are visible by default
             });
 
-            // If in top view, create new wireframe lines
+            // If in top view, create top view lines
             if (isTopView) {
                 planes.forEach(plane => {
-                    // Convert to Line2 for thicker wireframe
-                    const geometry = plane.mesh.geometry;
-                    const edges = new THREE.EdgesGeometry(geometry);
-
-                    // Create Line2 geometry
-                    const positions = [];
-                    const attrPos = edges.getAttribute('position');
-                    for (let i = 0; i < attrPos.count; i++) {
-                        positions.push(attrPos.getX(i), attrPos.getY(i), attrPos.getZ(i));
-                    }
-
-                    const lineGeometry = new THREE.LineGeometry();
-                    lineGeometry.setPositions(positions);
-
-                    // Create Line2 material with thicker lines
-                    const lineMaterial = new THREE.LineMaterial({
-                        color: 0xff0000,
-                        linewidth: 0.01, // Thicker line width
-                        dashed: false
-                    });
-
-                    // Create the Line2 object
-                    const line = new THREE.Line2(lineGeometry, lineMaterial);
-                    line.computeLineDistances();
-                    line.scale.set(1, 1, 1);
-
-                    // Store reference to the line so we can remove it later
-                    plane.mesh.userData.wireframeLine = line;
-
-                    // Add to scene and hide the original mesh
-                    line.position.copy(plane.mesh.position);
-                    line.rotation.copy(plane.mesh.rotation);
-                    scene.add(line);
-                    plane.mesh.visible = false;
+                    createTopViewLine(plane);
                 });
             }
 
@@ -996,8 +958,83 @@
                 controls.enableRotate = false;
             }
             controls.update();
+            
+            // Update transform controls to apply view-specific settings
+            updateTransformControls();
         }
         // setView(activeCamera);
+
+        // Function to create top view line for a plane
+        function createTopViewLine(plane) {
+            // Create a line geometry representing the plane's length with fixed width
+            const lineGeometry = new THREE.BufferGeometry();
+            
+            // Use the plane's width as the line length, with fixed width of 0.5
+            const lineLength = plane.width;
+            const fixedWidth = 0.3;
+            
+            // Create points for a simple line representing the plane's length
+            const points = [
+                new THREE.Vector3(-lineLength/2, 0, -fixedWidth/2),
+                new THREE.Vector3(lineLength/2, 0, -fixedWidth/2),
+                new THREE.Vector3(lineLength/2, 0, fixedWidth/2),
+                new THREE.Vector3(-lineLength/2, 0, fixedWidth/2),
+                new THREE.Vector3(-lineLength/2, 0, -fixedWidth/2) // Close the loop
+            ];
+            
+            // Apply the plane's rotation to the points
+            const rotationMatrix = new THREE.Matrix4();
+            rotationMatrix.makeRotationFromEuler(new THREE.Euler(
+                plane.incline * Math.PI / 180,
+                plane.angle * Math.PI / 180,
+                0
+            ));
+            
+            points.forEach(point => {
+                point.applyMatrix4(rotationMatrix);
+            });
+            
+            lineGeometry.setFromPoints(points);
+            
+            // Create line material with plane's color
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: plane.color, // Use plane's color
+                linewidth: 10
+            });
+            
+            // Create the line mesh
+            const line = new THREE.Line(lineGeometry, lineMaterial);
+            
+            // Position the line at the plane's position
+            line.position.copy(plane.mesh.position);
+            
+            // Store reference to the parent plane
+            line.userData.parentPlane = plane;
+            
+            // Store reference to the line in the plane's userData
+            plane.mesh.userData.topViewLine = line;
+            
+            // Add to scene
+            scene.add(line);
+        }
+
+        // Function to update top view line when plane changes
+        function updateTopViewLine(plane) {
+            if (plane.mesh.userData.topViewLine) {
+                // Remove old line
+                scene.remove(plane.mesh.userData.topViewLine);
+                
+                // Create new line with updated dimensions
+                createTopViewLine(plane);
+            }
+        }
+
+        // Function to update top view line color
+        function updateTopViewLineColor(plane, color) {
+            if (activeCamera === cameras.top && plane.mesh.userData.topViewLine) {
+                plane.mesh.userData.topViewLine.material.color.setHex(color);
+            }
+        }
 
         let scalingcheck = false;
         let aspect = null;
@@ -1353,6 +1390,11 @@
 
                     controllers.width.__oldValue = planeData.width;
                     controllers.height.__oldValue = planeData.height;
+                    
+                    // Update top view line if in top view
+                    if (activeCamera === cameras.top) {
+                        updateTopViewLine(planeData);
+                    }
                 }
 
                 // Update position and rotation
@@ -1362,6 +1404,11 @@
                     planeData.angle * Math.PI / 180,
                     0
                 );
+
+                // Update top view line if in top view and position/rotation changed
+                if (activeCamera === cameras.top) {
+                    updateTopViewLine(planeData);
+                }
 
                 // Ensure temperature control reflects current type
                 updateTemperatureControl();
@@ -1412,6 +1459,9 @@
                 planeData.color = hex;
                 // If currently selected, keep highlight (yellow), otherwise set mapped color
                 planeData.mesh.material.color.setHex(selectedPlanes.includes(planeData) ? 0xe3e3e3 : hex);
+                
+                // Update top view line color if in top view
+                updateTopViewLineColor(planeData, hex);
             }
 
             // React immediately to Type changes
@@ -1445,15 +1495,10 @@
             for (let i = 0; i < intersects.length; i++) {
                 const object = intersects[i].object;
 
-                // Find the plane data (might be a child of the group)
-                let planeData = null;
-                if (object.userData && planes.some(p => p.mesh === object)) {
-                    planeData = object.userData;
-                } else if (object.parent && object.parent.userData && planes.some(p => p.mesh === object.parent)) {
-                    planeData = object.parent.userData;
-                }
-
-                if (planeData) {
+                // Check if clicked on a top view line
+                if (object.userData && object.userData.parentPlane) {
+                    const planeData = object.userData.parentPlane;
+                    
                     if (isShiftPressed) {
                         // Shift+click - toggle selection
                         const index = selectedPlanes.indexOf(planeData);
@@ -1461,6 +1506,7 @@
                             // Add to selection
                             selectedPlanes.push(planeData);
                             planeData.mesh.material.color.setHex(0xe3e3e3);
+                            updateTopViewLineColor(planeData, 0xe3e3e3);
 
                             // If we have multiple planes selected, create/update group
                             if (selectedPlanes.length > 1) {
@@ -1470,6 +1516,7 @@
                             // Remove from selection
                             selectedPlanes.splice(index, 1);
                             planeData.mesh.material.color.setHex(planeData.color);
+                            updateTopViewLineColor(planeData, planeData.color);
 
                             // If the plane is in a group, restore its parent and position
                             if (selectedPlaneGroup && planeData.mesh.parent === selectedPlaneGroup) {
@@ -1498,14 +1545,95 @@
                             // If clicking on the only selected plane, deselect it
                             selectedPlanes = [];
                             planeData.mesh.material.color.setHex(planeData.color);
+                            updateTopViewLineColor(planeData, planeData.color);
                             ungroupPlanes();
                         } else {
                             // Otherwise, select this plane as the only selection
                             ungroupPlanes();
-                            planes.forEach(p => p.mesh.material.color.setHex(p.color));
+                            planes.forEach(p => {
+                    p.mesh.material.color.setHex(p.color);
+                    updateTopViewLineColor(p, p.color);
+                });
                             planes.forEach(p => p.mesh.visible = true);
                             selectedPlanes = [planeData];
                             planeData.mesh.material.color.setHex(0xe3e3e3);
+                            updateTopViewLineColor(planeData, 0xe3e3e3);
+                        }
+                    }
+
+                    // Update transform controls
+                    updateTransformControls();
+                    return;
+                }
+
+                // Find the plane data (might be a child of the group)
+                let planeData = null;
+                if (object.userData && planes.some(p => p.mesh === object)) {
+                    planeData = object.userData;
+                } else if (object.parent && object.parent.userData && planes.some(p => p.mesh === object.parent)) {
+                    planeData = object.parent.userData;
+                }
+
+                if (planeData) {
+                    if (isShiftPressed) {
+                        // Shift+click - toggle selection
+                        const index = selectedPlanes.indexOf(planeData);
+                        if (index === -1) {
+                            // Add to selection
+                            selectedPlanes.push(planeData);
+                            planeData.mesh.material.color.setHex(0xe3e3e3);
+                            updateTopViewLineColor(planeData, 0xe3e3e3);
+
+                            // If we have multiple planes selected, create/update group
+                            if (selectedPlanes.length > 1) {
+                                createOrUpdateGroup();
+                            }
+                        } else {
+                            // Remove from selection
+                            selectedPlanes.splice(index, 1);
+                            planeData.mesh.material.color.setHex(planeData.color);
+                            updateTopViewLineColor(planeData, planeData.color);
+
+                            // If the plane is in a group, restore its parent and position
+                            if (selectedPlaneGroup && planeData.mesh.parent === selectedPlaneGroup) {
+                                const original = originalPositions.get(planeData);
+                                selectedPlaneGroup.remove(planeData.mesh);
+                                if (original) {
+                                    original.parent.add(planeData.mesh);
+                                    planeData.mesh.position.copy(original.worldPosition);
+                                }
+                                planeData.mesh.visible = true;
+                            }
+
+                            // Update group if we still have multiple planes
+                            if (selectedPlanes.length > 1) {
+                                createOrUpdateGroup();
+                            } else {
+                                // If only one plane left, disband group and restore visibility for all
+                                ungroupPlanes();
+                                planes.forEach(p => p.mesh.visible = true);
+                            }
+                        }
+                    } else {
+                        // Regular click - single selection
+                        // Check if this plane is already the only selected plane
+                        if (selectedPlanes.length === 1 && selectedPlanes[0] === planeData) {
+                            // If clicking on the only selected plane, deselect it
+                            selectedPlanes = [];
+                            planeData.mesh.material.color.setHex(planeData.color);
+                            updateTopViewLineColor(planeData, planeData.color);
+                            ungroupPlanes();
+                        } else {
+                            // Otherwise, select this plane as the only selection
+                            ungroupPlanes();
+                            planes.forEach(p => {
+                    p.mesh.material.color.setHex(p.color);
+                    updateTopViewLineColor(p, p.color);
+                });
+                            planes.forEach(p => p.mesh.visible = true);
+                            selectedPlanes = [planeData];
+                            planeData.mesh.material.color.setHex(0xe3e3e3);
+                            updateTopViewLineColor(planeData, 0xe3e3e3);
                         }
                     }
 
@@ -1518,7 +1646,10 @@
             // Clicked on empty space without shift - clear selection
             if (!isShiftPressed) {
                 ungroupPlanes();
-                planes.forEach(p => p.mesh.material.color.setHex(p.color));
+                planes.forEach(p => {
+                    p.mesh.material.color.setHex(p.color);
+                    updateTopViewLineColor(p, p.color);
+                });
                 selectedPlanes = [];
                 transformControlss.detach();
                 gui.destroy();
@@ -1539,6 +1670,17 @@
                 // Control the last selected plane
                 transformControlss.attach(selectedPlanes[selectedPlanes.length - 1].mesh);
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+            }
+            
+            // Disable scaling in top view
+            if (activeCamera === cameras.top) {
+                transformControlss.showX = true;
+                transformControlss.showY = false; // Disable Y scaling (thickness)
+                transformControlss.showZ = true;
+            } else {
+                transformControlss.showX = true;
+                transformControlss.showY = true;
+                transformControlss.showZ = true;
             }
         }
         function createOrUpdateGroup() {
@@ -1688,10 +1830,20 @@
                         plane.x = plane.mesh.position.x + selectedPlaneGroup.position.x;
                         plane.y = plane.mesh.position.y + selectedPlaneGroup.position.y;
                         plane.z = plane.mesh.position.z + selectedPlaneGroup.position.z;
+                        
+                        // Update top view line if in top view
+                        if (activeCamera === cameras.top) {
+                            updateTopViewLine(plane);
+                        }
                     });
                 } else if (selectedPlanes.length > 0 &&
                     transformControlss.object === selectedPlanes[selectedPlanes.length - 1].mesh) {
                     updatePlaneDataFromTransform();
+                    
+                    // Update top view line if in top view
+                    if (activeCamera === cameras.top) {
+                        updateTopViewLine(selectedPlanes[selectedPlanes.length - 1]);
+                    }
                 }
                 if (selectedPlanes.length > 0) {
                     updateGUI(selectedPlanes[selectedPlanes.length - 1]);
@@ -3150,4 +3302,3 @@
 </body>
 
 </html>
-
