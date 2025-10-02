@@ -14,12 +14,16 @@
             height: auto;
             position: absolute;
             top: 50px;
+            bottom: 10px;
             left: 10px;
             z-index: 100;
 
             background-color: #b5cea8;
             background-color: #4444447e;
             border-radius: 4px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
         }
 
         #renderbody {
@@ -123,7 +127,7 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 0px;
+            margin-left: 10px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -147,7 +151,7 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 8px;
+            margin-left: 10px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -171,7 +175,7 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 8px;
+            margin-left: 10px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -260,7 +264,7 @@
             cursor: pointer;
         }
 
-        #scalinginput {
+        #scalinginput, #gridSizeInput {
             padding: 6px 8px;
             font-size: 20px;
             font-family: 'Poppins', sans-serif;
@@ -274,11 +278,11 @@
             transition: all 0.3s ease;
         }
 
-        #scalinginput:placeholder {
+        #scalinginput:placeholder, #gridSizeInput:placeholder {
             color: #aaa;
         }
 
-        #scalinginput:focus {
+        #scalinginput:focus, #gridSizeInput:focus {
             border-color: #4a90e2;
             box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
         }
@@ -431,32 +435,6 @@
         #detail:hover {
             background: #007e7a;
         }
-
-
-        #contourgenerator {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Poppins', sans-serif;
-            font: 700;
-            font-size: x-large;
-            padding: 8px 16px;
-            background: #00a19b;
-            width: 200px;
-            height: 50px;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 25px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-        }
-
-        #contourgenerator:hover {
-            background: #007e7a;
-        }
-
 
         #calculate {
             display: flex;
@@ -646,6 +624,9 @@
         <button id="scalingbutton"> Set scale </button>
         <button id="updatescale"> Update </button>
         <hr>
+        <p>Precision</p>
+        <input type="number" id="gridSizeInput" placeholder="Receiver grid size (1-50)" min="1" max="50">
+        <hr>
         <p>Save</p>
         <button id="exportBtn"> Export Scene</button>
         <input type="file" id="importFile" accept=".json" hidden>
@@ -653,8 +634,8 @@
         <hr>
         <p>Calculation</p>
         <button id="detail">Show detail</button>
-        <button id="contourgenerator">Contour</button>
         <button id="calculate">Calculate</button>
+        
 
     </div>
     <svg id="contour-svg" width="512" height="512" style="display:none;"></svg>
@@ -1181,8 +1162,11 @@
         // Function to create a new plane
         function createPlane(width = 1, height = 1) {
             const geometry = new THREE.PlaneGeometry(width, height);
+            // Default to Receiver type with yellow color
+            const defaultType = "Receiver";
+            const defaultColorHex = 0xffff00;
             const material = new THREE.MeshStandardMaterial({
-                color: new THREE.Color(Math.random() * 0xffffff),
+                color: defaultColorHex,
                 side: THREE.DoubleSide,
                 wireframe: false,
             });
@@ -1213,8 +1197,8 @@
                 angle: plane.rotation.y * 180 / Math.PI,
                 incline: plane.rotation.x * 180 / Math.PI,
                 color: material.color.getHex(),
-                temperature: 30,
-                type: "receiver",
+                temperature: 0,
+                type: defaultType,
                 positive: true
             };
 
@@ -1341,9 +1325,9 @@
                 z: gui.add(planeData, 'z').name('Z-position').step(0.1),
                 angle: gui.add(planeData, 'angle', -180, 180).name('Rotation').step(1),
                 incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
-                temp: gui.add(planeData, "temperature").name("Temperature"),
+                temp: gui.add(planeData, "temperature").name("Heat Flux"),
                 type: gui.add(planeData, "type", ["Receiver", "Emitter", "Inert"]).name("Type"),
-                positive: gui.add(planeData, "positive").name("X-positive"),
+                positive: gui.add(planeData, "positive").name("Receiver X-positive"),
             };
 
             // Track previous values
@@ -1379,6 +1363,9 @@
                     0
                 );
 
+                // Ensure temperature control reflects current type
+                updateTemperatureControl();
+
                 // Always capture state after any change
                 captureState();
             }
@@ -1389,6 +1376,54 @@
                     controller.onChange(handleGUIChange);
                 }
             });
+
+            // Helper to enable/disable a GUI controller input element
+            function setControllerDisabled(controller, disabled) {
+                if (!controller || !controller.domElement) return;
+                const inputEl = controller.domElement.querySelector('input');
+                if (inputEl) inputEl.disabled = disabled;
+            }
+
+            // Enable temp only for Emitters; otherwise set to 0 and disable
+            function updateTemperatureControl() {
+                const isEmitter = String(planeData.type || '').toLowerCase() === 'emitter';
+                if (!isEmitter) {
+                    if (planeData.temperature !== 0) {
+                        planeData.temperature = 0;
+                        controllers.temp.updateDisplay();
+                        // Capture only when value actually changed
+                        captureState();
+                    }
+                    setControllerDisabled(controllers.temp, true);
+                } else {
+                    setControllerDisabled(controllers.temp, false);
+                }
+            }
+
+            // Update color by type, preserving selection highlight
+            function updateColorByType() {
+                const typeLower = String(planeData.type || '').toLowerCase();
+                let hex = 0xffff00; // receiver default (yellow)
+                if (typeLower === 'emitter') {
+                    hex = 0xff0000; // emitter red
+                } else if (typeLower === 'inert') {
+                    hex = 0x0000ff; // inert blue
+                }
+                planeData.color = hex;
+                // If currently selected, keep highlight (yellow), otherwise set mapped color
+                planeData.mesh.material.color.setHex(selectedPlanes.includes(planeData) ? 0xe3e3e3 : hex);
+            }
+
+            // React immediately to Type changes
+            controllers.type.onChange(function () {
+                updateTemperatureControl();
+                updateColorByType();
+                captureState();
+            });
+
+            // Initialize temperature control state on GUI creation
+            updateTemperatureControl();
+            updateColorByType();
         }
 
 
@@ -1425,7 +1460,7 @@
                         if (index === -1) {
                             // Add to selection
                             selectedPlanes.push(planeData);
-                            planeData.mesh.material.color.setHex(0xffff00);
+                            planeData.mesh.material.color.setHex(0xe3e3e3);
 
                             // If we have multiple planes selected, create/update group
                             if (selectedPlanes.length > 1) {
@@ -1470,7 +1505,7 @@
                             planes.forEach(p => p.mesh.material.color.setHex(p.color));
                             planes.forEach(p => p.mesh.visible = true);
                             selectedPlanes = [planeData];
-                            planeData.mesh.material.color.setHex(0xffff00);
+                            planeData.mesh.material.color.setHex(0xe3e3e3);
                         }
                     }
 
@@ -2059,13 +2094,48 @@
         }
 
         let dataarrayforcontour = null;
+        // Receiver grid size (N x N), default 10
+        let receiverGridSize = 10;
+        // Backend endpoint for contour generation
+        const BACKEND_CONTOUR_URL = '/api/contour';
 
         // Generate smoother, more realistic fields for contours
-        function generatePrettyField(n, m, options = {}) {
-            const method = options.method || 'rbf'; // 'rbf' | 'sine'
-            if (method === 'sine') return generateSinusoidalField(n, m, options);
-            return generateRbfField(n, m, options);
+        // Removed random generators; contours now rely on backend-provided data only
+
+        // Holder for backend-provided contour data
+        let uploadedContour = null; // { width, height, values }
+
+        // Normalize various JSON formats into {width,height,values(flat array)}
+        function normalizeContourJson(json) {
+            // If already normalized
+            if (json && Number.isInteger(json.width) && Number.isInteger(json.height) && Array.isArray(json.values)) {
+                // If values are 2D, flatten
+                if (Array.isArray(json.values[0])) {
+                    const flat = [];
+                    for (let y = 0; y < json.height; y++) {
+                        for (let x = 0; x < json.width; x++) {
+                            flat.push(json.values[y][x]);
+                        }
+                    }
+                    return { width: json.width, height: json.height, values: flat };
+                }
+                return { width: json.width, height: json.height, values: json.values };
+            }
+            // If just a 2D array
+            if (Array.isArray(json) && Array.isArray(json[0])) {
+                const height = json.length;
+                const width = json[0].length;
+                const flat = [];
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) flat.push(json[y][x]);
+                }
+                return { width, height, values: flat };
+            }
+            // If just flat array, require square-ish detection is not reliable; reject
+            throw new Error('Unsupported contour JSON format. Expected {width,height,values}, 2D array, or flat array with dims.');
         }
+
+        // Note: uploadedContour should be set by backend integration code before invoking contour rendering
 
         function generateRbfField(n, m, options = {}) {
             const numSources = options.numSources || 5;
@@ -2202,272 +2272,136 @@
             return points;
         }
 
-        function Pointsinfo() {
-            const exportData = planes
-                .filter(plane => plane.type === "Receiver" || plane.type === "Emitter") // Process both Receiver and Emitter planes
-                .map(plane => {
-                    if (plane.type === "Receiver") {
-                        // For Receiver planes: generate points and normal
-                        const points = generatePointsOnPlane(plane).map(point => [
-                            Math.round(point.position.x * 100) / 100,
-                            Math.round(point.position.y * 100) / 100,
-                            Math.round(point.position.z * 100) / 100
-                        ]);
+        async function Pointsinfo() {
+            const receiver_points = [];
+            const polygons = [];
+            const inert_polygons = [];
 
-                        // Calculate the normal vector of the plane
-                        // Start with the default normal (0, 1, 0) for a horizontal plane
-                        const normal = new THREE.Vector3(0, 1, 0);
-                        
-                        // Apply the same rotation transformations as used in generatePointsOnPlane
-                        const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-                        const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-                        const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-                        const rotationMatrix = new THREE.Matrix4()
-                            .multiply(makeHorizontal)
-                            .multiply(rotationX)
-                            .multiply(rotationY);
-                        
-                        // Apply the rotation to get the world normal
-                        normal.applyMatrix4(rotationMatrix);
-
-                        // Apply positive/negative direction based on the positive checkbox
-                        if (plane.positive) {
-                            // If positive is checked, ensure normal points in positive direction
-                            // Check the dominant axis and ensure it's positive
-                            const absX = Math.abs(normal.x);
-                            const absY = Math.abs(normal.y);
-                            const absZ = Math.abs(normal.z);
-                            
-                            // Find the dominant axis
-                            if (absX >= absY && absX >= absZ) {
-                                // X is dominant - ensure it's positive
-                                if (normal.x < 0) {
-                                    normal.negate();
-                                }
-                            } else if (absY >= absX && absY >= absZ) {
-                                // Y is dominant - ensure it's positive
-                                if (normal.y < 0) {
-                                    normal.negate();
-                                }
-                            } else {
-                                // Z is dominant - ensure it's positive
-                                if (normal.z < 0) {
-                                    normal.negate();
-                                }
-                            }
-                        } else {
-                            // If positive is unchecked, ensure normal points in negative direction
-                            // Check the dominant axis and ensure it's negative
-                            const absX = Math.abs(normal.x);
-                            const absY = Math.abs(normal.y);
-                            const absZ = Math.abs(normal.z);
-                            
-                            // Find the dominant axis
-                            if (absX >= absY && absX >= absZ) {
-                                // X is dominant - ensure it's negative
-                                if (normal.x > 0) {
-                                    normal.negate();
-                                }
-                            } else if (absY >= absX && absY >= absZ) {
-                                // Y is dominant - ensure it's negative
-                                if (normal.y > 0) {
-                                    normal.negate();
-                                }
-                            } else {
-                                // Z is dominant - ensure it's negative
-                                if (normal.z > 0) {
-                                    normal.negate();
-                                }
-                            }
-                        }
-
-                        return {
-                            [plane.name || "Unnamed"]: {
-                                type: "Receiver",
-                                points: points,
-                                normal: [
-                                    Math.round(normal.x * 100) / 100,
-                                    Math.round(normal.y * 100) / 100,
-                                    Math.round(normal.z * 100) / 100
-                                ]
-                            }
-                        };
-                    } else if (plane.type === "Emitter") {
-                        // For Emitter planes: calculate four corner coordinates
-                        const width = plane.width;
-                        const height = plane.height;
-                        
-                        // Define the four corners in local coordinates (before rotation)
-                        const corners = [
-                            new THREE.Vector3(-width/2, 0, -height/2),  // Bottom-left
-                            new THREE.Vector3(width/2, 0, -height/2),   // Bottom-right
-                            new THREE.Vector3(width/2, 0, height/2),    // Top-right
-                            new THREE.Vector3(-width/2, 0, height/2)     // Top-left
-                        ];
-                        
-                        // Apply the same rotation transformations as used in generatePointsOnPlane
-                        const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-                        const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-                        const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-                        const rotationMatrix = new THREE.Matrix4()
-                            .multiply(makeHorizontal)
-                            .multiply(rotationX)
-                            .multiply(rotationY);
-                        
-                        // Transform corners to world coordinates
-                        const worldCorners = corners.map(corner => {
-                            corner.applyMatrix4(rotationMatrix);
-                            // Add plane position offset
-                            corner.add(new THREE.Vector3(plane.x, plane.y, plane.z));
-                            return [
-                                Math.round(corner.x * 100) / 100,
-                                Math.round(corner.y * 100) / 100,
-                                Math.round(corner.z * 100) / 100
-                            ];
-                        });
-
-                        return {
-                            [plane.name || "Unnamed"]: {
-                                type: "Emitter",
-                                corners: worldCorners
-                            }
-                        };
-                    }
+            // Helpers
+            function computeWorldCorners(plane) {
+                const width = plane.width;
+                const height = plane.height;
+                const corners = [
+                    new THREE.Vector3(-width/2, 0, -height/2),
+                    new THREE.Vector3(width/2, 0, -height/2),
+                    new THREE.Vector3(width/2, 0, height/2),
+                    new THREE.Vector3(-width/2, 0, height/2)
+                ];
+                const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                const rotationMatrix = new THREE.Matrix4()
+                    .multiply(makeHorizontal)
+                    .multiply(rotationX)
+                    .multiply(rotationY);
+                return corners.map(corner => {
+                    corner.applyMatrix4(rotationMatrix);
+                    corner.add(new THREE.Vector3(plane.x, plane.y, plane.z));
+                    return [
+                        Math.round(corner.x * 100) / 100,
+                        Math.round(corner.y * 100) / 100,
+                        Math.round(corner.z * 100) / 100
+                    ];
                 });
+            }
 
-            // Create a JSON string with pretty formatting (2-space indentation)
-            const jsonString = JSON.stringify(exportData, null, 2);
+            function computePlaneNormal(plane) {
+                const normal = new THREE.Vector3(0, 1, 0);
+                const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                const rotationMatrix = new THREE.Matrix4()
+                    .multiply(makeHorizontal)
+                    .multiply(rotationX)
+                    .multiply(rotationY);
+                normal.applyMatrix4(rotationMatrix);
+                // Enforce positive/negative based on plane.positive
+                const absX = Math.abs(normal.x);
+                const absY = Math.abs(normal.y);
+                const absZ = Math.abs(normal.z);
+                const dominant = absX >= absY && absX >= absZ ? 'x' : (absY >= absX && absY >= absZ ? 'y' : 'z');
+                if (plane.positive) {
+                    if ((dominant === 'x' && normal.x < 0) || (dominant === 'y' && normal.y < 0) || (dominant === 'z' && normal.z < 0)) {
+                        normal.negate();
+                    }
+                } else {
+                    if ((dominant === 'x' && normal.x > 0) || (dominant === 'y' && normal.y > 0) || (dominant === 'z' && normal.z > 0)) {
+                        normal.negate();
+                    }
+                }
+                return [
+                    Math.round(normal.x * 100) / 100,
+                    Math.round(normal.y * 100) / 100,
+                    Math.round(normal.z * 100) / 100
+                ];
+            }
 
-            // Create a Blob with the JSON data
-            const blob = new Blob([jsonString], { type: 'application/json' });
+            // Build structure
+            planes.forEach(plane => {
+                if (plane.type === "Receiver") {
+                    // Generate N x N points per receiver
+                    const N = Math.max(1, Math.min(50, parseInt(receiverGridSize, 10) || 10));
+                    const points = generatePointsOnPlane(plane, N, N);
+                    const normalArr = computePlaneNormal(plane);
+                    points.forEach(pt => {
+                        receiver_points.push({
+                            origin: [
+                                Math.round(pt.position.x * 100) / 100,
+                                Math.round(pt.position.y * 100) / 100,
+                                Math.round(pt.position.z * 100) / 100
+                            ],
+                            normal: normalArr
+                        });
+                    });
+                } else if (plane.type === "Emitter") {
+                    const worldCorners = computeWorldCorners(plane);
+                    polygons.push({ polygon: worldCorners, temperature: plane.temperature });
+                } else if (plane.type === "Inert") {
+                    const worldCorners = computeWorldCorners(plane);
+                    inert_polygons.push(worldCorners);
+                }
+            });
 
-            // Create a download link
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `planes_export_${new Date().toISOString().slice(0, 10)}.json`;
+            const exportData = {
+                receiver_points: receiver_points,
+                polygons: polygons,
+                inert_polygons: inert_polygons,
+                num_rays: 100000
+            };
 
-            // Trigger the download
-            document.body.appendChild(a);
-            a.click();
-
-            // Clean up
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 100);
+            // Send to backend and await contour response
+            try {
+                const resp = await fetch(BACKEND_CONTOUR_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(exportData)
+                });
+                if (!resp.ok) throw new Error(`Backend error: ${resp.status}`);
+                const contourJson = await resp.json();
+                const norm = normalizeContourJson(contourJson);
+                uploadedContour = norm;
+                dataarrayforcontour = norm.values;
+                // Show the contour modal using the received data
+                showContourToSelectedPlane();
+            } catch (err) {
+                console.error('Failed to fetch contour data:', err);
+                alert('Failed to fetch contour data from backend.');
+            }
         }
 
         document.getElementById("calculate").addEventListener("click", Pointsinfo);
+        // Update receiver grid size from input
+        const gridSizeEl = document.getElementById('gridSizeInput');
+        if (gridSizeEl) {
+            gridSizeEl.addEventListener('change', function () {
+                const val = parseInt(this.value, 10);
+                if (isNaN(val)) return;
+                receiverGridSize = Math.max(1, Math.min(50, val));
+            });
+        }
 
         // Add this function to handle the contour generation
-        function addContourToSelectedPlane() {
-            if (selectedPlanes.length === 0) {
-                alert("Please select a plane first");
-                return;
-            }
-
-            const selectedPlane = selectedPlanes[0]; // Use the first selected plane
-
-            // Calculate dimensions based on plane size
-            const gridWidth = Math.round(selectedPlane.width) * 2;
-            const gridHeight = Math.round(selectedPlane.height) * 2;
-            const totalPoints = gridWidth * gridHeight;
-
-            // Calculate SVG dimensions based on plane aspect ratio and size
-            const planeAspectRatio = selectedPlane.width / selectedPlane.height;
-            const planeArea = selectedPlane.width * selectedPlane.height;
-
-            // Scale base size based on plane area to maintain texture quality
-            // For larger planes, use higher resolution textures
-            let baseSize = 512; // Minimum base size
-            if (planeArea > 25) { // If plane area is larger than 5x5
-                baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100)); // Scale with plane size
-            }
-
-            let svgWidth, svgHeight;
-
-            if (planeAspectRatio >= 1) {
-                // Plane is wider than tall
-                svgWidth = baseSize;
-                svgHeight = Math.round(baseSize / planeAspectRatio);
-            } else {
-                // Plane is taller than wide
-                svgHeight = baseSize;
-                svgWidth = Math.round(baseSize * planeAspectRatio);
-            }
-
-            // Update SVG dimensions
-            const svg = d3.select("#contour-svg");
-            svg.attr("width", svgWidth).attr("height", svgHeight);
-            svg.selectAll("*").remove(); // Clear any existing content
-
-            // Generate smoother sample data based on plane dimensions
-            const data = {
-                width: gridWidth,
-                height: gridHeight,
-                values: generatePrettyField(gridWidth, gridHeight, { method: 'rbf' })
-            };
-
-            console.log(`Generated ${gridWidth}x${gridHeight} contour data for plane ${selectedPlane.name} with SVG size ${svgWidth}x${svgHeight} (baseSize: ${baseSize}, planeArea: ${planeArea}):`, data.values);
-
-            dataarrayforcontour = data.values;
-            const n = data.width;
-            const m = data.height;
-
-            // Use fitSize to properly scale the projection to the SVG dimensions
-            const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
-                type: "Polygon",
-                coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
-            });
-
-            const path = d3.geoPath().projection(projection);
-            const contours = d3.contours().size([n, m]);
-            const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(data.values)).nice();
-
-            svg.append("g")
-                .attr("stroke", "black")
-                .selectAll()
-                .data(color.ticks(20))
-                .join("path")
-                .attr("d", d => path(contours.contour(data.values, d)))
-                .attr("fill", d => color(d));
-
-            // Convert SVG to Canvas with matching dimensions
-            const canvas = document.createElement('canvas');
-            canvas.width = svgWidth;
-            canvas.height = svgHeight;
-            const ctx = canvas.getContext('2d');
-
-            // Serialize SVG to string
-            const svgString = new XMLSerializer().serializeToString(svg.node());
-            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-            const url = URL.createObjectURL(svgBlob);
-
-            // Create image from SVG
-            const img = new Image();
-            img.onload = function () {
-                ctx.drawImage(img, 0, 0);
-                URL.revokeObjectURL(url);
-
-                // Create texture from canvas and apply to selected plane
-                const texture = new THREE.CanvasTexture(canvas);
-                texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-                texture.minFilter = THREE.LinearFilter;
-                texture.magFilter = THREE.LinearFilter;
-                texture.generateMipmaps = false; // Disable mipmaps for better quality on large textures
-
-                // Mark as contour texture for state capture
-                texture.isContourTexture = true;
-                texture.contourData = data.values;
-
-                // Update the selected plane's material
-                selectedPlane.mesh.material.map = texture;
-                selectedPlane.mesh.material.needsUpdate = true;
-                selectedPlane.mesh.material.color.set(0xffffff); // Reset color for proper texture display
-            };
-            img.src = url;
-        }
+        // Removed addContourToSelectedPlane; use backend-provided data via detail modal
 
         let clipboard = null; // Will store copied planes
         let isCtrlPressed = false; // Track Ctrl key state
@@ -2558,7 +2492,7 @@
 
                 // Select the new plane
                 newPlanes.push(newPlane);
-                newPlane.mesh.material.color.setHex(0xffff00);
+                newPlane.mesh.material.color.setHex(0xe3e3e3);
             });
 
             selectedPlanes = [...newPlanes];
@@ -2608,18 +2542,19 @@
             const valueDisplay = document.getElementById("valueDisplay");
             const span = document.getElementsByClassName("close")[0];
 
-            // Check if we have contour data, if not generate it based on plane dimensions
+            // Use uploaded contour if available, otherwise generate if missing
             if (!dataarrayforcontour) {
-                // Calculate dimensions based on plane size
-                const gridWidth = Math.round(selectedPlane.width) * 2;
-                const gridHeight = Math.round(selectedPlane.height) * 2;
-                // Generate smoother sample data for the modal display as well
-                dataarrayforcontour = generatePrettyField(gridWidth, gridHeight, { method: 'rbf' });
+                if (uploadedContour && uploadedContour.values) {
+                    dataarrayforcontour = uploadedContour.values;
+                } else {
+                    alert('Contour data not available. Please provide data from backend.');
+                    return;
+                }
             }
 
             // Calculate dimensions based on plane size for display
-            const gridWidth = Math.round(selectedPlane.width) * 2;
-            const gridHeight = Math.round(selectedPlane.height) * 2;
+            const gridWidth = (uploadedContour && uploadedContour.width) ? uploadedContour.width : Math.round(selectedPlane.width) * 2;
+            const gridHeight = (uploadedContour && uploadedContour.height) ? uploadedContour.height : Math.round(selectedPlane.height) * 2;
 
             // Generate the contour data based on plane dimensions
             const contourData = {
@@ -2792,7 +2727,7 @@
         }
 
         // Add event listener to your contour button
-        document.getElementById("contourgenerator").addEventListener("click", addContourToSelectedPlane);
+        
         document.getElementById("detail").addEventListener("click", showContourToSelectedPlane);
 
 
@@ -2965,7 +2900,7 @@
 
                 if (planeState.selected) {
                     selectedPlanes.push(plane);
-                    plane.mesh.material.color.setHex(0xffff00);
+                    plane.mesh.material.color.setHex(0xe3e3e3);
                 } else {
                     plane.mesh.material.color.setHex(plane.color);
                 }
@@ -3200,3 +3135,4 @@
 </body>
 
 </html>
+
