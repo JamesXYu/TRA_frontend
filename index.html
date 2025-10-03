@@ -826,9 +826,42 @@
         scene.add(directionalLight);
 
 
-        // Add a grid (hidden by default)
-        const grid = new THREE.GridHelper(50, 50, 0xffffff, 0xffffff);
+        // Add a grid (hidden by default) with snapping-compatible size
+        const gridSize = 50;
+        const gridDivisions = 50;
+        const grid = new THREE.GridHelper(gridSize, gridDivisions, 0xffffff, 0xffffff);
         scene.add(grid);
+
+        // Grid snapping configuration
+        const gridSnapConfig = {
+            translation: {
+                enabled: true,
+                size: 1.0 // Grid unit size for translation
+            },
+            rotation: {
+                enabled: true,
+                increment: Math.PI / 12 // 15 degrees in radians
+            },
+            scale: {
+                enabled: true,
+                increment: 0.5,
+                minScale: 0.1
+            }
+        };
+
+        // Grid snapping utility functions
+        function snapToGrid(value, gridSize) {
+            return Math.round(value / gridSize) * gridSize;
+        }
+
+        function snapRotation(angle, increment) {
+            return Math.round(angle / increment) * increment;
+        }
+
+        function snapScale(scale, increment, minScale) {
+            const snapped = Math.round(scale / increment) * increment;
+            return Math.max(snapped, minScale);
+        }
 
         // Add CSS2DRenderer for axis labels
         const labelRenderer = new THREE.CSS2DRenderer();
@@ -1837,6 +1870,9 @@
             });
 
             transformControlss.addEventListener('objectChange', function () {
+                // Apply grid snapping based on current transform mode
+                applyGridSnapping();
+
                 if (selectedPlaneGroup && transformControlss.object === selectedPlaneGroup) {
                     // Update all planes when group moves
                     selectedPlanes.forEach(plane => {
@@ -1862,6 +1898,59 @@
                     updateGUI(selectedPlanes[selectedPlanes.length - 1]);
                 }
             });
+        }
+
+        // Grid snapping implementation
+        function applyGridSnapping() {
+            if (!transformControlss.object) return;
+
+            const currentMode = transformControlss.getMode();
+            const object = transformControlss.object;
+
+            // Get world position for proper grid alignment
+            const worldPosition = new THREE.Vector3();
+            object.getWorldPosition(worldPosition);
+
+            switch (currentMode) {
+                case 'translate':
+                    if (gridSnapConfig.translation.enabled) {
+                        // Snap world position to grid
+                        const snappedWorldPos = new THREE.Vector3(
+                            snapToGrid(worldPosition.x, gridSnapConfig.translation.size),
+                            snapToGrid(worldPosition.y, gridSnapConfig.translation.size),
+                            snapToGrid(worldPosition.z, gridSnapConfig.translation.size)
+                        );
+
+                        // Convert back to local position if object has a parent
+                        if (object.parent && object.parent !== scene) {
+                            const localPosition = new THREE.Vector3();
+                            localPosition.copy(snappedWorldPos);
+                            object.parent.worldToLocal(localPosition);
+                            object.position.copy(localPosition);
+                        } else {
+                            object.position.copy(snappedWorldPos);
+                        }
+                    }
+                    break;
+
+                case 'rotate':
+                    if (gridSnapConfig.rotation.enabled) {
+                        // Snap rotation to increments
+                        object.rotation.x = snapRotation(object.rotation.x, gridSnapConfig.rotation.increment);
+                        object.rotation.y = snapRotation(object.rotation.y, gridSnapConfig.rotation.increment);
+                        object.rotation.z = snapRotation(object.rotation.z, gridSnapConfig.rotation.increment);
+                    }
+                    break;
+
+                case 'scale':
+                    if (gridSnapConfig.scale.enabled) {
+                        // Snap scale to increments with minimum
+                        object.scale.x = snapScale(object.scale.x, gridSnapConfig.scale.increment, gridSnapConfig.scale.minScale);
+                        object.scale.y = snapScale(object.scale.y, gridSnapConfig.scale.increment, gridSnapConfig.scale.minScale);
+                        object.scale.z = snapScale(object.scale.z, gridSnapConfig.scale.increment, gridSnapConfig.scale.minScale);
+                    }
+                    break;
+            }
         }
 
         function commitGroupTransform() {
@@ -1994,6 +2083,12 @@
                     } else {
                         transformControlss.setSpace('local');
                     }
+                    break;
+                case 'g': // Toggle grid snapping
+                    gridSnapConfig.translation.enabled = !gridSnapConfig.translation.enabled;
+                    gridSnapConfig.rotation.enabled = !gridSnapConfig.rotation.enabled;
+                    gridSnapConfig.scale.enabled = !gridSnapConfig.scale.enabled;
+                    console.log(`Grid snapping ${gridSnapConfig.translation.enabled ? 'enabled' : 'disabled'}`);
                     break;
             }
         });
@@ -2556,8 +2651,13 @@
                 num_rays: 100000
             };
 
-            // Log the output JSON structure
-            console.log("Output JSON structure:", JSON.stringify(exportData, null, 2));
+            // Log the complete JSON output
+            console.log("=== COMPLETE JSON OUTPUT ===");
+            console.log(JSON.stringify(exportData, null, 2));
+            console.log("=== END JSON OUTPUT ===");
+            
+            // Also log a summary
+            console.log(`JSON Summary: ${Object.keys(receiver_planes).length} receiver planes, ${polygons.length} emitter polygons, ${inert_polygons.length} inert polygons`);
 
             // Send to backend and await contour response
             try {
