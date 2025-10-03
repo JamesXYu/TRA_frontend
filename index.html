@@ -916,12 +916,18 @@
             if (camera === cameras.top) {
                 camera.position.set(0, 10, 0);
                 camera.lookAt(0, 0, 0);
+                camera.rotation.set(0, 0, 0);
+                camera.up.set(0, 0, -1); // Ensure consistent up vector for top view
             } else if (camera === cameras.front) {
                 camera.position.set(0, 0, 10);
                 camera.lookAt(0, 0, 0);
+                camera.rotation.set(0, 0, 0);
+                camera.up.set(0, 1, 0);
             } else if (camera === cameras.left) {
                 camera.position.set(-10, 0, 0);
                 camera.lookAt(0, 0, 0);
+                camera.rotation.set(0, 0, 0);
+                camera.up.set(0, 1, 0);
             }
 
             // Update projection matrices
@@ -1672,12 +1678,19 @@
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             }
             
-            // Disable scaling in top view
-            if (activeCamera === cameras.top) {
+            // Configure transform controls based on mode and view
+            if (transformControlss.getMode() === 'rotate') {
+                // Always disable Z rotation and show only X and Y
                 transformControlss.showX = true;
-                transformControlss.showY = false; // Disable Y scaling (thickness)
+                transformControlss.showY = true;
+                transformControlss.showZ = false;
+            } else if (activeCamera === cameras.top) {
+                // In top view, disable Y scaling (thickness)
+                transformControlss.showX = true;
+                transformControlss.showY = false;
                 transformControlss.showZ = true;
             } else {
+                // Default: show all axes for translate and scale
                 transformControlss.showX = true;
                 transformControlss.showY = true;
                 transformControlss.showZ = true;
@@ -1970,6 +1983,9 @@
                     break;
                 case 'r': // Rotate
                     transformControlss.setMode('rotate');
+                    // Always disable Z rotation and show only X and Y
+                    transformControlss.showX = true;
+                    transformControlss.showY = true;
                     transformControlss.showZ = false;
                     break;
                 case 'q': // Toggle between local and world space
