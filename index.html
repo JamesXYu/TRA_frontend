@@ -656,8 +656,70 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/renderers/CSS2DRenderer.js"></script>
 
     <script>
+        // Configuration
+        const CONFIG = {
+            // Backend API URL - Change this to your deployed backend URL
+            BACKEND_URL: 'http://localhost:5000', // For local development
+            // BACKEND_URL: 'https://your-app.onrender.com', // For Render.com deployment
+            // BACKEND_URL: 'https://your-domain.com', // For custom domain
+            
+            // API endpoints
+            CALCULATE_ENDPOINT: '/calculate',
+            HEALTH_ENDPOINT: '/health',
+            STATUS_ENDPOINT: '/status',
+            
+            // Request settings
+            REQUEST_TIMEOUT: 60000, // 60 seconds
+            MAX_RETRIES: 3
+        };
+        
+        console.log("Radiation 3D Application loaded with config:", CONFIG);
 
+        // Backend communication utilities
+        async function checkBackendHealth() {
+            try {
+                const response = await fetch(CONFIG.BACKEND_URL + CONFIG.HEALTH_ENDPOINT, {
+                    method: 'GET',
+                    timeout: 5000
+                });
+                return response.ok;
+            } catch (error) {
+                console.warn('Backend health check failed:', error);
+                return false;
+            }
+        }
 
+        async function getBackendStatus() {
+            try {
+                const response = await fetch(CONFIG.BACKEND_URL + CONFIG.STATUS_ENDPOINT, {
+                    method: 'GET',
+                    timeout: 5000
+                });
+                if (response.ok) {
+                    return await response.json();
+                }
+                return null;
+            } catch (error) {
+                console.warn('Backend status check failed:', error);
+                return null;
+            }
+        }
+
+        // Test backend connection on page load
+        async function testBackendConnection() {
+            console.log('Testing backend connection...');
+            const isHealthy = await checkBackendHealth();
+            if (isHealthy) {
+                console.log('✅ Backend is healthy');
+                const status = await getBackendStatus();
+                if (status) {
+                    console.log('Backend status:', status);
+                }
+            } else {
+                console.warn('⚠️ Backend is not responding. Check your configuration.');
+                console.log('Current backend URL:', CONFIG.BACKEND_URL);
+            }
+        }
 
         // Add these variables near the top with your other variables
         let history = [];
@@ -979,6 +1041,15 @@
                 }
                 plane.mesh.visible = true; // Make sure all planes are visible by default
             });
+
+            // Detach transform controls if they're attached to a top view line
+            if (transformControlss && transformControlss.object) {
+                // Check if transform controls are attached to a top view line
+                const isTopViewLine = transformControlss.object.userData && transformControlss.object.userData.parentPlane;
+                if (isTopViewLine) {
+                    transformControlss.detach();
+                }
+            }
 
             // If in top view, create top view lines
             if (isTopView) {
@@ -1350,13 +1421,33 @@
 
             captureState("Before delete");
 
-            // Delete all selected planes
-            selectedPlanes.forEach(planeData => {
-                if (transformControlss.object === planeData.mesh) {
+            // Filter out planes that no longer exist in the scene
+            const validSelectedPlanes = selectedPlanes.filter(planeData => {
+                return planes.includes(planeData) && scene.children.includes(planeData.mesh);
+            });
+
+            if (validSelectedPlanes.length === 0) {
+                console.warn('No valid planes to delete');
+                selectedPlanes = [];
+                return;
+            }
+
+            // Delete all valid selected planes
+            validSelectedPlanes.forEach(planeData => {
+                // Detach transform controls if they're attached to this plane or its group
+                if (transformControlss.object === planeData.mesh || 
+                    (selectedPlaneGroup && transformControlss.object === selectedPlaneGroup)) {
                     transformControlss.detach();
                 }
 
+                // Remove the actual plane mesh from scene
                 scene.remove(planeData.mesh);
+
+                // Remove top view line if it exists
+                if (planeData.mesh.userData.topViewLine) {
+                    scene.remove(planeData.mesh.userData.topViewLine);
+                    planeData.mesh.userData.topViewLine = null;
+                }
 
                 const index = planes.indexOf(planeData);
                 if (index > -1) {
@@ -1366,6 +1457,13 @@
                 planeData.mesh.geometry.dispose();
                 planeData.mesh.material.dispose();
             });
+
+            // Clear group if it exists
+            if (selectedPlaneGroup) {
+                scene.remove(selectedPlaneGroup);
+                selectedPlaneGroup = null;
+                originalPositions.clear();
+            }
 
             gui.destroy();
             gui = new dat.GUI();
@@ -1538,6 +1636,12 @@
                 if (object.userData && object.userData.parentPlane) {
                     const planeData = object.userData.parentPlane;
                     
+                    // Ensure the plane still exists in the planes array
+                    if (!planes.includes(planeData)) {
+                        console.warn('Top view line references a plane that no longer exists');
+                        return;
+                    }
+                    
                     if (isShiftPressed) {
                         // Shift+click - toggle selection
                         const index = selectedPlanes.indexOf(planeData);
@@ -1698,7 +1802,10 @@
 
         function updateTransformControls() {
             if (selectedPlanes.length === 0) {
-                transformControlss.detach();
+                // Only detach if transform controls are currently attached to something
+                if (transformControlss.object) {
+                    transformControlss.detach();
+                }
                 gui.destroy();
                 gui = new dat.GUI();
             } else if (selectedPlaneGroup) {
@@ -1706,9 +1813,18 @@
                 transformControlss.attach(selectedPlaneGroup);
                 updateGUI(selectedPlanes[selectedPlanes.length - 1]);
             } else {
-                // Control the last selected plane
-                transformControlss.attach(selectedPlanes[selectedPlanes.length - 1].mesh);
-                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+                // Control the last selected plane - ensure the mesh exists
+                const targetMesh = selectedPlanes[selectedPlanes.length - 1].mesh;
+                if (targetMesh && scene.children.includes(targetMesh)) {
+                    transformControlss.attach(targetMesh);
+                    updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+                } else {
+                    // If mesh doesn't exist, detach and clear selection
+                    transformControlss.detach();
+                    selectedPlanes = [];
+                    gui.destroy();
+                    gui = new dat.GUI();
+                }
             }
             
             // Configure transform controls based on mode and view
@@ -2090,6 +2206,14 @@
                     gridSnapConfig.scale.enabled = !gridSnapConfig.scale.enabled;
                     console.log(`Grid snapping ${gridSnapConfig.translation.enabled ? 'enabled' : 'disabled'}`);
                     break;
+                case 't': // Top view
+                    setView(cameras.top);
+                    console.log('Switched to top view');
+                    break;
+                case 'y': // Perspective view
+                    setView(cameras.perspective);
+                    console.log('Switched to perspective view');
+                    break;
             }
         });
         window.addEventListener("keydown", function (event) {
@@ -2367,7 +2491,7 @@
         // Receiver grid size (N x N), default 10
         let receiverGridSize = 10;
         // Backend endpoint for contour generation
-        const BACKEND_CONTOUR_URL = '/api/contour';
+        const BACKEND_CONTOUR_URL = CONFIG.BACKEND_URL + CONFIG.CALCULATE_ENDPOINT;
 
         // Generate smoother, more realistic fields for contours
         // Removed random generators; contours now rely on backend-provided data only
@@ -2543,139 +2667,175 @@
         }
 
         async function Pointsinfo() {
-            const receiver_planes = {};
-            const polygons = [];
-            const inert_polygons = [];
-
-            // Helpers
-            function computeWorldCorners(plane) {
-                const width = plane.width;
-                const height = plane.height;
-                const corners = [
-                    new THREE.Vector3(-width/2, 0, -height/2),
-                    new THREE.Vector3(width/2, 0, -height/2),
-                    new THREE.Vector3(width/2, 0, height/2),
-                    new THREE.Vector3(-width/2, 0, height/2)
-                ];
-                        const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-                        const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-                        const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-                        const rotationMatrix = new THREE.Matrix4()
-                            .multiply(makeHorizontal)
-                            .multiply(rotationX)
-                            .multiply(rotationY);
-                return corners.map(corner => {
-                    corner.applyMatrix4(rotationMatrix);
-                    corner.add(new THREE.Vector3(plane.x, plane.y, plane.z));
-                    return [
-                        Math.round(corner.x * 100) / 100,
-                        Math.round(corner.y * 100) / 100,
-                        Math.round(corner.z * 100) / 100
-                    ];
-                });
-            }
-
-            function computePlaneNormal(plane) {
-                const normal = new THREE.Vector3(0, 1, 0);
-                const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-                const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-                const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-                const rotationMatrix = new THREE.Matrix4()
-                    .multiply(makeHorizontal)
-                    .multiply(rotationX)
-                    .multiply(rotationY);
-                        normal.applyMatrix4(rotationMatrix);
-                // Enforce positive/negative based on plane.positive
-                            const absX = Math.abs(normal.x);
-                            const absY = Math.abs(normal.y);
-                            const absZ = Math.abs(normal.z);
-                const dominant = absX >= absY && absX >= absZ ? 'x' : (absY >= absX && absY >= absZ ? 'y' : 'z');
-                if (plane.positive) {
-                    if ((dominant === 'x' && normal.x < 0) || (dominant === 'y' && normal.y < 0) || (dominant === 'z' && normal.z < 0)) {
-                                    normal.negate();
-                                }
-                            } else {
-                    if ((dominant === 'x' && normal.x > 0) || (dominant === 'y' && normal.y > 0) || (dominant === 'z' && normal.z > 0)) {
-                                    normal.negate();
-                                }
-                            }
-                return [
-                                    Math.round(normal.x * 100) / 100,
-                                    Math.round(normal.y * 100) / 100,
-                                    Math.round(normal.z * 100) / 100
-                ];
-            }
-
-            // Build structure
-            let receiverPlaneIndex = 1;
-            planes.forEach(plane => {
-                if (plane.type === "Receiver") {
-                    // Calculate grid dimensions based on plane size and user input N
-                    const N = Math.max(1, Math.min(50, parseInt(receiverGridSize, 10) || 10));
-                    const roundedWidth = Math.ceil(plane.width);
-                    const roundedHeight = Math.ceil(plane.height);
-                    const gridWidth = roundedWidth * N;
-                    const gridHeight = roundedHeight * N;
-                    
-                    console.log(`Receiver plane ${receiverPlaneIndex}: original size ${plane.width}x${plane.height}, rounded to ${roundedWidth}x${roundedHeight}, grid size ${gridWidth}x${gridHeight}`);
-                    
-                    const points = generatePointsOnPlane(plane, gridHeight, gridWidth);
-                    const normalArr = computePlaneNormal(plane);
-                    
-                    receiver_planes[`plane${receiverPlaneIndex}`] = {
-                        width: gridWidth,
-                        height: gridHeight,
-                        points: points.map(pt => ({
-                            origin: [
-                                Math.round(pt.position.x * 100) / 100,
-                                Math.round(pt.position.y * 100) / 100,
-                                Math.round(pt.position.z * 100) / 100
-                            ],
-                            normal: normalArr
-                        }))
-                    };
-                    receiverPlaneIndex++;
-                } else if (plane.type === "Emitter") {
-                    const worldCorners = computeWorldCorners(plane);
-                    polygons.push({ polygon: worldCorners, temperature: plane.temperature });
-                } else if (plane.type === "Inert") {
-                    const worldCorners = computeWorldCorners(plane);
-                    inert_polygons.push(worldCorners);
-                }
-            });
-
-            const exportData = {
-                receiver_planes: receiver_planes,
-                polygons: polygons,
-                inert_polygons: inert_polygons,
-                num_rays: 100000
-            };
-
-            // Log the complete JSON output
-            console.log("=== COMPLETE JSON OUTPUT ===");
-            console.log(JSON.stringify(exportData, null, 2));
-            console.log("=== END JSON OUTPUT ===");
+            // Show loading indicator
+            const calculateBtn = document.getElementById('calculate');
+            const originalText = calculateBtn.textContent;
+            calculateBtn.textContent = 'Calculating...';
+            calculateBtn.disabled = true;
             
-            // Also log a summary
-            console.log(`JSON Summary: ${Object.keys(receiver_planes).length} receiver planes, ${polygons.length} emitter polygons, ${inert_polygons.length} inert polygons`);
-
-            // Send to backend and await contour response
             try {
+                const receiver_planes = {};
+                const polygons = [];
+                const inert_polygons = [];
+
+                // Helpers
+                function computeWorldCorners(plane) {
+                    const width = plane.width;
+                    const height = plane.height;
+                    const corners = [
+                        new THREE.Vector3(-width/2, 0, -height/2),
+                        new THREE.Vector3(width/2, 0, -height/2),
+                        new THREE.Vector3(width/2, 0, height/2),
+                        new THREE.Vector3(-width/2, 0, height/2)
+                    ];
+                    const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                    const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                    const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                    const rotationMatrix = new THREE.Matrix4()
+                        .multiply(makeHorizontal)
+                        .multiply(rotationX)
+                        .multiply(rotationY);
+                    return corners.map(corner => {
+                        corner.applyMatrix4(rotationMatrix);
+                        corner.add(new THREE.Vector3(plane.x, plane.y, plane.z));
+                        return [
+                            Math.round(corner.x * 100) / 100,
+                            Math.round(corner.y * 100) / 100,
+                            Math.round(corner.z * 100) / 100
+                        ];
+                    });
+                }
+
+                function computePlaneNormal(plane) {
+                    const normal = new THREE.Vector3(0, 1, 0);
+                    const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+                    const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
+                    const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
+                    const rotationMatrix = new THREE.Matrix4()
+                        .multiply(makeHorizontal)
+                        .multiply(rotationX)
+                        .multiply(rotationY);
+                    normal.applyMatrix4(rotationMatrix);
+                    // Enforce positive/negative based on plane.positive
+                    const absX = Math.abs(normal.x);
+                    const absY = Math.abs(normal.y);
+                    const absZ = Math.abs(normal.z);
+                    const dominant = absX >= absY && absX >= absZ ? 'x' : (absY >= absX && absY >= absZ ? 'y' : 'z');
+                    if (plane.positive) {
+                        if ((dominant === 'x' && normal.x < 0) || (dominant === 'y' && normal.y < 0) || (dominant === 'z' && normal.z < 0)) {
+                            normal.negate();
+                        }
+                    } else {
+                        if ((dominant === 'x' && normal.x > 0) || (dominant === 'y' && normal.y > 0) || (dominant === 'z' && normal.z > 0)) {
+                            normal.negate();
+                        }
+                    }
+                    return [
+                        Math.round(normal.x * 100) / 100,
+                        Math.round(normal.y * 100) / 100,
+                        Math.round(normal.z * 100) / 100
+                    ];
+                }
+
+                // Build structure
+                let receiverPlaneIndex = 1;
+                planes.forEach(plane => {
+                    if (plane.type === "Receiver") {
+                        // Calculate grid dimensions based on plane size and user input N
+                        const N = Math.max(1, Math.min(50, parseInt(receiverGridSize, 10) || 10));
+                        const roundedWidth = Math.ceil(plane.width);
+                        const roundedHeight = Math.ceil(plane.height);
+                        const gridWidth = roundedWidth * N;
+                        const gridHeight = roundedHeight * N;
+                        
+                        console.log(`Receiver plane ${receiverPlaneIndex}: original size ${plane.width}x${plane.height}, rounded to ${roundedWidth}x${roundedHeight}, grid size ${gridWidth}x${gridHeight}`);
+                        
+                        const points = generatePointsOnPlane(plane, gridHeight, gridWidth);
+                        const normalArr = computePlaneNormal(plane);
+                        
+                        receiver_planes[`plane${receiverPlaneIndex}`] = {
+                            width: gridWidth,
+                            height: gridHeight,
+                            points: points.map(pt => ({
+                                origin: [
+                                    Math.round(pt.position.x * 100) / 100,
+                                    Math.round(pt.position.y * 100) / 100,
+                                    Math.round(pt.position.z * 100) / 100
+                                ],
+                                normal: normalArr
+                            }))
+                        };
+                        receiverPlaneIndex++;
+                    } else if (plane.type === "Emitter") {
+                        const worldCorners = computeWorldCorners(plane);
+                        polygons.push({ polygon: worldCorners, temperature: plane.temperature });
+                    } else if (plane.type === "Inert") {
+                        const worldCorners = computeWorldCorners(plane);
+                        inert_polygons.push(worldCorners);
+                    }
+                });
+
+                const exportData = {
+                    receiver_planes: receiver_planes,
+                    polygons: polygons,
+                    inert_polygons: inert_polygons,
+                    num_rays: 100000
+                };
+
+                // Log the complete JSON output
+                console.log("=== COMPLETE JSON OUTPUT ===");
+                console.log(JSON.stringify(exportData, null, 2));
+                console.log("=== END JSON OUTPUT ===");
+                
+                // Also log a summary
+                console.log(`JSON Summary: ${Object.keys(receiver_planes).length} receiver planes, ${polygons.length} emitter polygons, ${inert_polygons.length} inert polygons`);
+
+                // Send to backend and await contour response
+                console.log('Sending data to backend:', exportData);
+                
                 const resp = await fetch(BACKEND_CONTOUR_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(exportData)
                 });
-                if (!resp.ok) throw new Error(`Backend error: ${resp.status}`);
-                const contourJson = await resp.json();
-                const norm = normalizeContourJson(contourJson);
-                uploadedContour = norm;
-                dataarrayforcontour = norm.values;
-                // Show the contour modal using the received data
-                showContourToSelectedPlane();
+                
+                if (!resp.ok) {
+                    const errorText = await resp.text();
+                    throw new Error(`Backend error: ${resp.status} - ${errorText}`);
+                }
+                
+                const responseData = await resp.json();
+                console.log('Backend response:', responseData);
+                
+                if (responseData.success && responseData.plane_info && responseData.plane_info.values) {
+                    // Process the temperature values from the backend
+                    const temperatureValues = responseData.plane_info.values;
+                    
+                    // Create contour data structure
+                    const contourData = {
+                        width: responseData.plane_info.width || 10,
+                        height: responseData.plane_info.height || 10,
+                        values: temperatureValues
+                    };
+                    
+                    // Store the contour data
+                    uploadedContour = contourData;
+                    dataarrayforcontour = temperatureValues;
+                    
+                    console.log('Contour data processed:', contourData);
+                    
+                    // Show the contour modal using the received data
+                    showContourToSelectedPlane();
+                } else {
+                    throw new Error('Invalid response format from backend');
+                }
             } catch (err) {
                 console.error('Failed to fetch contour data:', err);
-                alert('Failed to fetch contour data from backend.');
+                alert(`Failed to fetch contour data from backend: ${err.message}`);
+            } finally {
+                // Restore button state
+                calculateBtn.textContent = originalText;
+                calculateBtn.disabled = false;
             }
         }
 
@@ -3407,6 +3567,9 @@
         }
         animate();
 
+        // Test backend connection when page loads
+        testBackendConnection();
+
         // Handle window resize
         window.addEventListener("resize", () => {
             cameras.perspective.aspect = window.innerWidth / window.innerHeight;
@@ -3425,4 +3588,3 @@
 </body>
 
 </html>
-
