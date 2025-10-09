@@ -127,7 +127,7 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 3px;
+            margin-left: 15px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -261,6 +261,7 @@
             max-width: 70vw;
             max-height: 85vh;
             object-fit: contain;
+            transform: scaleY(-1);
         }
 
         .close {
@@ -274,7 +275,7 @@
             z-index: 1003;
         }
 
-        #scalinginput, #gridSizeInput, #colorScaleMin, #colorScaleMax {
+        #scalinginput, #gridSizeInput {
             padding: 6px 8px;
             font-size: 20px;
             font-family: 'Poppins', sans-serif;
@@ -286,6 +287,27 @@
             max-width: 185px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
             transition: all 0.3s ease;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        
+        #colorScaleMin, #colorScaleMax {
+            padding: 6px 8px;
+            font-size: 18px;
+            font-family: 'Poppins', sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            outline: none;
+            width: 65px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            margin: 5px 5px;
+        }
+        
+        .color-scale-container {
+            display: flex;
+            align-items: center;
+            margin-left: 25px;
             margin-top: 5px;
             margin-bottom: 5px;
         }
@@ -720,8 +742,11 @@
         <input type="number" id="gridSizeInput" placeholder="Receiver grid size (1-50)" min="1" max="50">
         <hr>
         <p>Color Scale</p>
-        <input type="number" id="colorScaleMin" placeholder="Min value (default: 0)" step="0.1" value="0">
-        <input type="number" id="colorScaleMax" placeholder="Max value (default: 20)" step="0.1" value="20">
+        <div class="color-scale-container">
+            <input type="number" id="colorScaleMin" placeholder="Min" step="0.1" value="0">
+            <span style="color: white; font-family: 'Poppins', sans-serif;">to</span>
+            <input type="number" id="colorScaleMax" placeholder="Max" step="0.1" value="20">
+        </div>
         <hr>
         <p>Save</p>
         <button id="exportBtn"> Export Scene</button>
@@ -2881,7 +2906,7 @@
                     <strong>Actual Data Range:</strong>
                     Min: ${dataMin.toFixed(3)}<br>
                     Max: ${dataMax.toFixed(3)}
-                    ${(dataMin < minValue || dataMax > maxValue) ? '<br><br><strong style="color: #d9534f;">⚠️ Data exceeds color scale!</strong>' : ''}
+                    ${(dataMin < minValue || dataMax > maxValue) ? '<br><br><strong style="color: #d9534f;"> Data exceeds color scale!</strong>' : ''}
                 `;
                 colorLegendDiv.appendChild(infoDiv);
             }
@@ -3539,6 +3564,7 @@
                 texture.minFilter = THREE.LinearFilter;
                 texture.magFilter = THREE.LinearFilter;
                 texture.generateMipmaps = false;
+                texture.flipY = false; // Flip texture vertically to match orientation
                 
                 // Mark as contour texture for state management
                 texture.isContourTexture = true;
@@ -3708,8 +3734,8 @@
                         scale = Math.max(scale - zoomFactor, minScale);
                     }
 
-                    // Apply the scale
-                    modalImg.style.transform = `scale(${scale})`;
+                    // Apply the scale with vertical flip
+                    modalImg.style.transform = `scale(${scale}, ${-scale})`;
                     modalImg.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
                 }
 
@@ -3722,9 +3748,9 @@
                     const imgY = (e.clientY - rect.top) / rect.height;
 
                     if (imgX >= 0 && imgX <= 1 && imgY >= 0 && imgY <= 1) {
-                        // Map to data coordinates
+                        // Map to data coordinates (flip Y because image is flipped)
                         const dataX = Math.floor(imgX * n);
-                        const dataY = Math.floor(imgY * m);
+                        const dataY = Math.floor((1 - imgY) * m);
 
                         // Clamp to valid range
                         const x = Math.max(0, Math.min(n - 1, dataX));
@@ -3760,7 +3786,7 @@
                     modalImg.removeEventListener('mousemove', handleMouseMove);
                     modalImg.removeEventListener('mouseleave', handleMouseLeave);
                     modal.style.display = "none";
-                    modalImg.style.transform = 'scale(1)';
+                    modalImg.style.transform = 'scaleY(-1)';
                     scale = 1; // Reset scale
                 }
 
@@ -4147,6 +4173,7 @@
                     texture.minFilter = THREE.LinearFilter;
                     texture.magFilter = THREE.LinearFilter;
                     texture.generateMipmaps = false;
+                    texture.flipY = false; // Flip texture vertically to match orientation
 
                     // Mark as contour texture for future state captures
                     texture.isContourTexture = true;
