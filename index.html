@@ -227,6 +227,18 @@
             height: 100%;
             background-color: rgba(0, 0, 0, 0.8);
         }
+        
+        .modal-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            max-width: 90vw;
+            max-height: 90vh;
+        }
 
         #valueDisplay {
             position: fixed;
@@ -243,15 +255,12 @@
 
         .modal-content {
             display: block;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
             transform-origin: center center;
             transition: transform 0.1s ease-out;
             cursor: zoom-in;
-            max-width: 90vw;
-            max-height: 90vh;
+            max-width: 70vw;
+            max-height: 85vh;
+            object-fit: contain;
         }
 
         .close {
@@ -262,9 +271,10 @@
             font-size: 40px;
             font-weight: bold;
             cursor: pointer;
+            z-index: 1003;
         }
 
-        #scalinginput, #gridSizeInput {
+        #scalinginput, #gridSizeInput, #colorScaleMin, #colorScaleMax {
             padding: 6px 8px;
             font-size: 20px;
             font-family: 'Poppins', sans-serif;
@@ -276,13 +286,15 @@
             max-width: 185px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
             transition: all 0.3s ease;
+            margin-top: 5px;
+            margin-bottom: 5px;
         }
 
-        #scalinginput:placeholder, #gridSizeInput:placeholder {
+        #scalinginput:placeholder, #gridSizeInput:placeholder, #colorScaleMin:placeholder, #colorScaleMax:placeholder {
             color: #aaa;
         }
 
-        #scalinginput:focus, #gridSizeInput:focus {
+        #scalinginput:focus, #gridSizeInput:focus, #colorScaleMin:focus, #colorScaleMax:focus {
             border-color: #4a90e2;
             box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
         }
@@ -619,6 +631,61 @@
             display: flex;
             justify-content: center;
         }
+
+        #colorLegend {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-family: 'Poppins', sans-serif;
+            min-width: 200px;
+        }
+
+        #colorLegend h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            text-align: center;
+            color: #333;
+        }
+        
+        #colorLegend .data-range-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 200, 0.3);
+            border-radius: 4px;
+            font-size: 12px;
+            color: #333;
+            border: 1px solid #ccc;
+        }
+        
+        #colorLegend .data-range-info strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .legend-gradient {
+            width: 40px;
+            height: 300px;
+            border: 2px solid #333;
+            border-radius: 4px;
+            margin: 0 auto;
+        }
+
+        .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 300px;
+            margin-left: 10px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .legend-container {
+            display: flex;
+            align-items: center;
+        }
     </style>
 
 </head>
@@ -652,6 +719,10 @@
         <p>Precision</p>
         <input type="number" id="gridSizeInput" placeholder="Receiver grid size (1-50)" min="1" max="50">
         <hr>
+        <p>Color Scale</p>
+        <input type="number" id="colorScaleMin" placeholder="Min value (default: 0)" step="0.1" value="0">
+        <input type="number" id="colorScaleMax" placeholder="Max value (default: 20)" step="0.1" value="20">
+        <hr>
         <p>Save</p>
         <button id="exportBtn"> Export Scene</button>
         <input type="file" id="importFile" accept=".json" hidden>
@@ -668,7 +739,16 @@
     <div id="contourModal" class="modal">
         <span class="close">&times;</span>
         <div id="valueDisplay"></div>
-        <img id="contourImage" class="modal-content">
+        <div class="modal-container">
+            <img id="contourImage" class="modal-content">
+            <div id="colorLegend">
+                <h3>Heat Flux Scale</h3>
+                <div class="legend-container">
+                    <div class="legend-gradient" id="legendGradient"></div>
+                    <div class="legend-labels" id="legendLabels"></div>
+                </div>
+            </div>
+        </div>
     </div>
     <svg id="contour-svg" width="512" height="512" style="display:none;"></svg>
 
@@ -2732,6 +2812,80 @@
         let receiverGridSize = 10;
         // Backend endpoint for contour generation
         const BACKEND_CONTOUR_URL = CONFIG.BACKEND_URL + CONFIG.CALCULATE_ENDPOINT;
+        
+        // Color scale settings
+        let colorScaleMin = 0;
+        let colorScaleMax = 20;
+        
+        // Function to get color scale values from UI
+        function getColorScaleValues() {
+            const minInput = document.getElementById('colorScaleMin');
+            const maxInput = document.getElementById('colorScaleMax');
+            
+            const min = parseFloat(minInput.value) || 0;
+            const max = parseFloat(maxInput.value) || 20;
+            
+            // Ensure max > min
+            if (max <= min) {
+                console.warn('Max value must be greater than min value. Using defaults.');
+                return { min: 0, max: 20 };
+            }
+            
+            return { min, max };
+        }
+        
+        // Function to create color legend
+        function createColorLegend(minValue, maxValue, numTicks = 11, dataMin = null, dataMax = null) {
+            const legendGradient = document.getElementById('legendGradient');
+            const legendLabels = document.getElementById('legendLabels');
+            const colorLegendDiv = document.getElementById('colorLegend');
+            
+            // Create gradient using d3 color scale
+            const colorScale = d3.scaleSequential(d3.interpolateTurbo).domain([minValue, maxValue]);
+            
+            // Create CSS gradient
+            const numStops = 100;
+            let gradientStops = [];
+            for (let i = 0; i <= numStops; i++) {
+                const value = minValue + (maxValue - minValue) * (i / numStops);
+                const color = colorScale(value);
+                const percentage = (i / numStops) * 100;
+                gradientStops.push(`${color} ${percentage}%`);
+            }
+            
+            // Apply gradient (bottom to top, reversed because we want high values at top)
+            legendGradient.style.background = `linear-gradient(to top, ${gradientStops.join(', ')})`;
+            
+            // Create labels
+            legendLabels.innerHTML = '';
+            const step = (maxValue - minValue) / (numTicks - 1);
+            
+            for (let i = 0; i < numTicks; i++) {
+                const value = maxValue - (i * step); // Reverse order (high to low)
+                const label = document.createElement('div');
+                label.textContent = value.toFixed(2);
+                label.style.fontWeight = 'bold';
+                legendLabels.appendChild(label);
+            }
+            
+            // Add data range info if provided
+            let existingInfo = colorLegendDiv.querySelector('.data-range-info');
+            if (existingInfo) {
+                existingInfo.remove();
+            }
+            
+            if (dataMin !== null && dataMax !== null) {
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'data-range-info';
+                infoDiv.innerHTML = `
+                    <strong>Actual Data Range:</strong>
+                    Min: ${dataMin.toFixed(3)}<br>
+                    Max: ${dataMax.toFixed(3)}
+                    ${(dataMin < minValue || dataMax > maxValue) ? '<br><br><strong style="color: #d9534f;">⚠️ Data exceeds color scale!</strong>' : ''}
+                `;
+                colorLegendDiv.appendChild(infoDiv);
+            }
+        }
 
         // Generate smoother, more realistic fields for contours
         // Removed random generators; contours now rely on backend-provided data only
@@ -3140,6 +3294,7 @@
         }
 
         document.getElementById("calculate").addEventListener("click", Pointsinfo);
+        
         // Update receiver grid size from input
         const gridSizeEl = document.getElementById('gridSizeInput');
         if (gridSizeEl) {
@@ -3148,6 +3303,35 @@
                 if (isNaN(val)) return;
                 receiverGridSize = Math.max(1, Math.min(50, val));
             });
+        }
+        
+        // Update color scale when inputs change and regenerate contours on existing data
+        const colorScaleMinEl = document.getElementById('colorScaleMin');
+        const colorScaleMaxEl = document.getElementById('colorScaleMax');
+        
+        function updateColorScale() {
+            const { min, max } = getColorScaleValues();
+            colorScaleMin = min;
+            colorScaleMax = max;
+            console.log(`Color scale updated: ${min} to ${max}`);
+            
+            // Regenerate contour textures for all planes that have contour data
+            planes.forEach(plane => {
+                if (plane.type === "Receiver" && plane.contourData) {
+                    applyContourTexture(plane);
+                }
+            });
+            
+            // Show notification
+            console.log('Contour colors updated for all receiver planes with data');
+        }
+        
+        if (colorScaleMinEl) {
+            colorScaleMinEl.addEventListener('change', updateColorScale);
+        }
+        
+        if (colorScaleMaxEl) {
+            colorScaleMaxEl.addEventListener('change', updateColorScale);
         }
 
         // Add this function to handle the contour generation
@@ -3291,6 +3475,10 @@
             const n = contourData.width;
             const m = contourData.height;
             
+            // Get user-defined color scale
+            const { min, max } = getColorScaleValues();
+            console.log(`Using color scale: ${min} to ${max}`);
+            
             // Calculate SVG dimensions based on plane aspect ratio
             const planeAspectRatio = plane.width / plane.height;
             const planeArea = plane.width * plane.height;
@@ -3320,7 +3508,7 @@
             
             const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
-            const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData.values)).nice();
+            const color = d3.scaleSequential(d3.interpolateTurbo).domain([min, max]);
             
             svg.append("g")
                 .attr("stroke", "black")
@@ -3387,6 +3575,21 @@
                 alert(`No contour data available for ${selectedPlane.name}. Please run Calculate first.`);
                 return;
             }
+            
+            // Log actual data range vs color scale range
+            const dataMin = Math.min(...selectedPlane.contourData.values);
+            const dataMax = Math.max(...selectedPlane.contourData.values);
+            const { min: userScaleMin, max: userScaleMax } = getColorScaleValues();
+            
+            console.log(`📊 Contour Data Analysis for "${selectedPlane.name}":`);
+            console.log(`   Actual data range: ${dataMin.toFixed(3)} to ${dataMax.toFixed(3)}`);
+            console.log(`   Color scale range: ${userScaleMin} to ${userScaleMax}`);
+            
+            if (dataMin < userScaleMin || dataMax > userScaleMax) {
+                console.warn(`⚠️ Some data values are outside the color scale range!`);
+                if (dataMin < userScaleMin) console.warn(`   ${(selectedPlane.contourData.values.filter(v => v < userScaleMin).length)} values below ${userScaleMin}`);
+                if (dataMax > userScaleMax) console.warn(`   ${(selectedPlane.contourData.values.filter(v => v > userScaleMax).length)} values above ${userScaleMax}`);
+            }
 
             // Get modal elements
             const modal = document.getElementById("contourModal");
@@ -3440,7 +3643,10 @@
 
             const path = d3.geoPath().projection(projection);
             const contours = d3.contours().size([n, m]);
-            const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData.values)).nice();
+            
+            // Get user-defined color scale
+            const { min: colorMin, max: colorMax } = getColorScaleValues();
+            const color = d3.scaleSequential(d3.interpolateTurbo).domain([colorMin, colorMax]);
 
             svg.append("g")
                 .attr("stroke", "black")
@@ -3470,6 +3676,11 @@
                 // Set the image source and show the modal
                 modalImg.src = canvas.toDataURL();
                 modal.style.display = "block";
+                
+                // Show color legend with user-defined scale and actual data range
+                const dataMin = Math.min(...contourData.values);
+                const dataMax = Math.max(...contourData.values);
+                createColorLegend(colorMin, colorMax, 11, dataMin, dataMax);
 
                 // Create value map from original data
                 const valueMap = [];
@@ -3498,7 +3709,7 @@
                     }
 
                     // Apply the scale
-                    modalImg.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                    modalImg.style.transform = `scale(${scale})`;
                     modalImg.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
                 }
 
@@ -3506,9 +3717,9 @@
                 function handleMouseMove(e) {
                     const rect = modalImg.getBoundingClientRect();
 
-                    // Calculate position relative to the scaled image
-                    const imgX = (e.clientX - (rect.left + rect.width / 2 - (rect.width * scale) / 2)) / (rect.width * scale);
-                    const imgY = (e.clientY - (rect.top + rect.height / 2 - (rect.height * scale) / 2)) / (rect.height * scale);
+                    // Calculate position relative to the image
+                    const imgX = (e.clientX - rect.left) / rect.width;
+                    const imgY = (e.clientY - rect.top) / rect.height;
 
                     if (imgX >= 0 && imgX <= 1 && imgY >= 0 && imgY <= 1) {
                         // Map to data coordinates
@@ -3549,7 +3760,8 @@
                     modalImg.removeEventListener('mousemove', handleMouseMove);
                     modalImg.removeEventListener('mouseleave', handleMouseLeave);
                     modal.style.display = "none";
-                    modalImg.style.transform = 'translate(-50%, -50%) scale(1)';
+                    modalImg.style.transform = 'scale(1)';
+                    scale = 1; // Reset scale
                 }
 
                 // Close handlers
@@ -3558,6 +3770,11 @@
                     if (e.target === modal) cleanup();
                 };
                 modalImg.onclick = function (e) {
+                    e.stopPropagation();
+                };
+                
+                // Prevent closing when clicking on color legend
+                document.getElementById('colorLegend').onclick = function(e) {
                     e.stopPropagation();
                 };
             };
@@ -3897,7 +4114,10 @@
 
                 const path = d3.geoPath().projection(projection);
                 const contours = d3.contours().size([n, m]);
-                const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData)).nice();
+                
+                // Get user-defined color scale
+                const { min, max } = getColorScaleValues();
+                const color = d3.scaleSequential(d3.interpolateTurbo).domain([min, max]);
 
                 svg.append("g")
                     .attr("stroke", "black")
