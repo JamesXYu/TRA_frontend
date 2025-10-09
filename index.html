@@ -383,6 +383,30 @@
             background: #007e7a;
         }
 
+        #standPlane {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Poppins', sans-serif;
+            font: 700;
+            font-size: x-large;
+            padding: 8px 16px;
+            background: #00a19b;
+            width: 200px;
+            height: 50px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 25px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+
+        #standPlane:hover {
+            background: #007e7a;
+        }
+
 
         #importbtn {
             display: flex;
@@ -610,6 +634,7 @@
         <button id="addplane"> Add Plane </button>
         <button id="deleteplane">Delete Plane </button>
         <button id="resetPlane">Reset Plane</button>
+        <button id="standPlane">Stand Plane</button>
         <hr>
         <p>Views</p>
         <div class="view-buttons-container">
@@ -659,7 +684,7 @@
         // Configuration
         const CONFIG = {
             // Backend API URL - Change this to your deployed backend URL
-            BACKEND_URL: 'http://localhost:5000', // For local development
+            BACKEND_URL: 'http://localhost:8080', // For local development
             // BACKEND_URL: 'https://your-app.onrender.com', // For Render.com deployment
             // BACKEND_URL: 'https://your-domain.com', // For custom domain
             
@@ -860,6 +885,8 @@
         // Add these near your other variables
         let selectedPlaneGroup = null; // Will store the temporary group
         let originalPositions = new Map(); // Stores original positions before grouping
+        let normalArrow = null; // Arrow to visualize the normal direction
+        let showNormalArrow = true; // Toggle for showing normal arrow
 
         // Add these near your other event listeners (like the keydown for transform controls)
         window.addEventListener('keydown', (event) => {
@@ -1146,6 +1173,90 @@
             }
         }
 
+        // Function to visualize the normal direction of a receiver plane
+        function visualizeNormal(plane) {
+            // Remove existing arrow if any
+            removeNormalArrow();
+            
+            console.log(`📍 visualizeNormal called for plane: "${plane.name}", type: "${plane.type}", showNormalArrow: ${showNormalArrow}`);
+            
+            // Check if visualization is enabled
+            if (!showNormalArrow) {
+                console.log(`⚠️ Normal arrow visualization is disabled. Click "Show Normal ✓" button to enable.`);
+                return;
+            }
+            
+            // Only show for receiver planes
+            if (plane.type !== "Receiver") {
+                console.log(`⚠️ Normal arrows only show for Receiver planes. Current type: "${plane.type}"`);
+                return;
+            }
+            
+            // Get the plane's actual normal from its mesh orientation
+            // PlaneGeometry default normal is (0, 0, 1) in local space
+            const normal = new THREE.Vector3(0, 0, 1);
+            
+            // Apply the mesh's rotation to get the world-space normal
+            normal.applyQuaternion(plane.mesh.quaternion);
+            normal.normalize();
+            
+            // Apply positive/negative setting
+            if (plane.positive) {
+                normal.negate();
+            }
+            
+            // Get plane center position from mesh
+            const origin = plane.mesh.position.clone();
+            
+            // Calculate arrow length based on plane size (about 60% of the smaller dimension)
+            const arrowLength = Math.min(plane.width, plane.height) * 0.6;
+            
+            // Create arrow color based on direction
+            // Positive = Green, Negative = Red
+            const arrowColor = plane.positive ? 0x00ff00 : 0xff0000;
+            
+            // Create the arrow helper
+            normalArrow = new THREE.ArrowHelper(
+                normal,           // direction
+                origin,           // origin
+                arrowLength,      // length
+                arrowColor,       // color
+                arrowLength * 0.3, // headLength (30% of arrow length)
+                arrowLength * 0.2  // headWidth (20% of arrow length)
+            );
+            
+            // Make the arrow more visible
+            normalArrow.line.material.linewidth = 3;
+            
+            // Add to scene
+            scene.add(normalArrow);
+            
+            console.log(`✨ Normal arrow created and added to scene!`);
+            console.log(`   Plane: "${plane.name}"`);
+            console.log(`   Position: [${origin.x.toFixed(2)}, ${origin.y.toFixed(2)}, ${origin.z.toFixed(2)}]`);
+            console.log(`   Direction: [${normal.x.toFixed(3)}, ${normal.y.toFixed(3)}, ${normal.z.toFixed(3)}]`);
+            console.log(`   Color: ${plane.positive ? 'GREEN (positive)' : 'RED (negative)'}`);
+            console.log(`   Arrow length: ${arrowLength.toFixed(2)}`);
+            console.log(`   Scene children count: ${scene.children.length}`);
+        }
+        
+        // Function to remove the normal arrow
+        function removeNormalArrow() {
+            if (normalArrow) {
+                scene.remove(normalArrow);
+                // ArrowHelper doesn't have dispose(), but we should clean up its children
+                if (normalArrow.line) {
+                    normalArrow.line.geometry.dispose();
+                    normalArrow.line.material.dispose();
+                }
+                if (normalArrow.cone) {
+                    normalArrow.cone.geometry.dispose();
+                    normalArrow.cone.material.dispose();
+                }
+                normalArrow = null;
+            }
+        }
+
         let scalingcheck = false;
         let aspect = null;
 
@@ -1416,6 +1527,64 @@
         // Add event listener for the reset button
         document.getElementById("resetPlane").addEventListener("click", resetPlaneToDefault);
 
+        // Function to make plane stand on ground (bottom edge at y=0)
+        function standPlaneOnGround() {
+            if (selectedPlanes.length === 0) {
+                alert("Please select at least one plane first");
+                return;
+            }
+
+            captureState("Before stand");
+
+            selectedPlanes.forEach(planeData => {
+                // Calculate the 4 corners of the plane in local space
+                const halfWidth = planeData.width / 2;
+                const halfHeight = planeData.height / 2;
+                
+                const corners = [
+                    new THREE.Vector3(-halfWidth, -halfHeight, 0),
+                    new THREE.Vector3(halfWidth, -halfHeight, 0),
+                    new THREE.Vector3(halfWidth, halfHeight, 0),
+                    new THREE.Vector3(-halfWidth, halfHeight, 0)
+                ];
+                
+                // Transform corners to world space
+                const worldCorners = corners.map(corner => {
+                    const worldCorner = corner.clone();
+                    worldCorner.applyQuaternion(planeData.mesh.quaternion);
+                    worldCorner.add(planeData.mesh.position);
+                    return worldCorner;
+                });
+                
+                // Find the minimum Y value (lowest point)
+                const minY = Math.min(...worldCorners.map(c => c.y));
+                
+                // Calculate the offset needed to bring lowest point to y=0
+                const yOffset = -minY;
+                
+                // Apply the offset to the plane's position
+                planeData.mesh.position.y += yOffset;
+                planeData.y = planeData.mesh.position.y;
+                
+                console.log(`📐 Plane "${planeData.name}" stood on ground: minY was ${minY.toFixed(3)}, adjusted by ${yOffset.toFixed(3)}, new Y: ${planeData.y.toFixed(3)}`);
+            });
+
+            // Update the GUI
+            if (selectedPlanes.length > 0) {
+                updateGUI(selectedPlanes[selectedPlanes.length - 1]);
+                
+                // Update normal arrow visualization if enabled
+                if (showNormalArrow && selectedPlanes[selectedPlanes.length - 1].type === "Receiver") {
+                    visualizeNormal(selectedPlanes[selectedPlanes.length - 1]);
+                }
+            }
+
+            captureState("After stand");
+        }
+
+        // Add event listener for the stand button
+        document.getElementById("standPlane").addEventListener("click", standPlaneOnGround);
+
         function deleteplanefn() {
             if (selectedPlanes.length === 0) return;
 
@@ -1468,6 +1637,7 @@
             gui.destroy();
             gui = new dat.GUI();
             selectedPlanes = [];
+            removeNormalArrow(); // Remove arrow when planes are deleted
             captureState();
         }
 
@@ -1480,12 +1650,25 @@
 
             const nameController = gui.add(planeData, 'name').name('Name');
             nameController.onChange(function (newName) {
-                const nameExists = planes.some(p => p !== planeData && p.name === newName);
-                if (nameExists) {
-                    alert('This name already exists! Please choose a different name.');
+                // Trim whitespace
+                newName = newName.trim();
+                
+                // Check for empty name
+                if (!newName) {
+                    alert('Name cannot be empty! Please provide a valid name.');
                     nameController.setValue(planeData.name);
                     return;
                 }
+                
+                // Check for duplicate names
+                const nameExists = planes.some(p => p !== planeData && p.name === newName);
+                if (nameExists) {
+                    alert(`This name already exists! Please choose a different name.\n\nExisting planes: ${planes.map(p => p.name).join(', ')}`);
+                    nameController.setValue(planeData.name);
+                    return;
+                }
+                
+                console.log(`Plane renamed: "${planeData.name}" → "${newName}"`);
                 planeData.name = newName;
                 captureState();
             });
@@ -1501,7 +1684,7 @@
                 incline: gui.add(planeData, 'incline', -180, 180).name("Inclination").step(1),
                 temp: gui.add(planeData, "temperature").name("Heat Flux"),
                 type: gui.add(planeData, "type", ["Receiver", "Emitter", "Inert"]).name("Type"),
-                positive: gui.add(planeData, "positive").name("Receiver X-positive"),
+                positive: gui.add(planeData, "positive").name("Normal Direction -"),
             };
 
             // Track previous values
@@ -1549,6 +1732,11 @@
 
                 // Ensure temperature control reflects current type
                 updateTemperatureControl();
+                
+                // Update normal arrow visualization for receiver planes
+                if (planeData.type === "Receiver") {
+                    visualizeNormal(planeData);
+                }
 
                 // Always capture state after any change
                 captureState();
@@ -1605,12 +1793,42 @@
             controllers.type.onChange(function () {
                 updateTemperatureControl();
                 updateColorByType();
+                
+                // Update or remove normal arrow based on type
+                if (planeData.type === "Receiver") {
+                    visualizeNormal(planeData);
+                } else {
+                    removeNormalArrow();
+                }
+                
+                captureState();
+            });
+            
+            // React to Normal Direction changes
+            controllers.positive.onChange(function () {
+                console.log(`Normal direction changed for "${planeData.name}": ${planeData.positive ? 'Positive (+)' : 'Negative (-)'}`);
+                if (planeData.type === "Receiver" && planeData.contourData) {
+                    console.warn(`⚠️ Normal direction changed after calculation. You may need to recalculate for accurate results.`);
+                }
+                
+                // Update the normal arrow visualization
+                if (planeData.type === "Receiver") {
+                    visualizeNormal(planeData);
+                }
+                
                 captureState();
             });
 
             // Initialize temperature control state on GUI creation
             updateTemperatureControl();
             updateColorByType();
+            
+            // Visualize the normal direction for receiver planes
+            if (planeData.type === "Receiver") {
+                visualizeNormal(planeData);
+            } else {
+                removeNormalArrow();
+            }
         }
 
 
@@ -1797,6 +2015,7 @@
                 transformControlss.detach();
                 gui.destroy();
                 gui = new dat.GUI();
+                removeNormalArrow(); // Remove arrow when nothing is selected
             }
         });
 
@@ -1808,6 +2027,7 @@
                 }
                 gui.destroy();
                 gui = new dat.GUI();
+                removeNormalArrow(); // Remove arrow when no planes selected
             } else if (selectedPlaneGroup) {
                 // Control the group if we have one
                 transformControlss.attach(selectedPlaneGroup);
@@ -2213,6 +2433,26 @@
                 case 'y': // Perspective view
                     setView(cameras.perspective);
                     console.log('Switched to perspective view');
+                    break;
+                case 'n': // Toggle normal arrow visualization
+                    showNormalArrow = !showNormalArrow;
+                    console.log(`Normal arrow visualization ${showNormalArrow ? 'ENABLED' : 'DISABLED'} (Press N to toggle)`);
+                    
+                    if (showNormalArrow) {
+                        // Re-visualize if a receiver plane is selected
+                        if (selectedPlanes.length > 0 && selectedPlanes[selectedPlanes.length - 1].type === "Receiver") {
+                            visualizeNormal(selectedPlanes[selectedPlanes.length - 1]);
+                        }
+                    } else {
+                        removeNormalArrow();
+                    }
+                    break;
+                case 's': // Stand plane on ground
+                    if (selectedPlanes.length > 0) {
+                        standPlaneOnGround();
+                    } else {
+                        console.log('⚠️ No plane selected. Select a plane first to use Stand function (Press S)');
+                    }
                     break;
             }
         });
@@ -2620,33 +2860,29 @@
 
             // Calculate step sizes
             const xStep = width / (cols - 1);
-            const zStep = height / (rows - 1);
+            const yStep = height / (rows - 1);
 
-            // Create rotation matrix from plane's rotation and inclination
-            const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-            const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-            const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-            const rotationMatrix = new THREE.Matrix4()
-                .multiply(makeHorizontal)
-                .multiply(rotationX)
-                .multiply(rotationY);
+            // Get the plane's world position and rotation
+            const worldPosition = plane.mesh.position.clone();
+            const worldQuaternion = plane.mesh.quaternion.clone();
 
             // Generate grid points
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < cols; col++) {
-                    // Calculate local position (centered)
+                    // Calculate local position (centered on plane)
+                    // THREE.js PlaneGeometry lies in the XY plane with Z as the normal
                     const xLocal = (col * xStep) - (width / 2);
-                    const zLocal = (row * zStep) - (height / 2);
-                    const yLocal = 0; // On the plane surface
+                    const yLocal = (row * yStep) - (height / 2);
+                    const zLocal = 0; // On the plane surface (Z is perpendicular to plane)
 
-                    // Create vector and apply rotation
+                    // Create vector in local space
                     const point = new THREE.Vector3(xLocal, yLocal, zLocal);
-                    point.applyMatrix4(rotationMatrix);
-
+                    
+                    // Apply the mesh's rotation to transform from local to world space
+                    point.applyQuaternion(worldQuaternion);
+                    
                     // Add plane position offset
-                    point.x += plane.x;
-                    point.y += plane.y;
-                    point.z += plane.z;
+                    point.add(worldPosition);
 
                     points.push({
                         id: row * cols + col + 1,
@@ -2707,38 +2943,47 @@
                 }
 
                 function computePlaneNormal(plane) {
-                    const normal = new THREE.Vector3(0, 1, 0);
-                    const makeHorizontal = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-                    const rotationY = new THREE.Matrix4().makeRotationY(plane.angle * Math.PI / 180);
-                    const rotationX = new THREE.Matrix4().makeRotationX(plane.incline * Math.PI / 180);
-                    const rotationMatrix = new THREE.Matrix4()
-                        .multiply(makeHorizontal)
-                        .multiply(rotationX)
-                        .multiply(rotationY);
-                    normal.applyMatrix4(rotationMatrix);
-                    // Enforce positive/negative based on plane.positive
-                    const absX = Math.abs(normal.x);
-                    const absY = Math.abs(normal.y);
-                    const absZ = Math.abs(normal.z);
-                    const dominant = absX >= absY && absX >= absZ ? 'x' : (absY >= absX && absY >= absZ ? 'y' : 'z');
+                    // Get the plane's actual normal from its mesh orientation
+                    // PlaneGeometry default normal is (0, 0, 1) in local space
+                    const normal = new THREE.Vector3(0, 0, 1);
+                    
+                    // Apply the mesh's rotation to get the world-space normal
+                    normal.applyQuaternion(plane.mesh.quaternion);
+                    normal.normalize();
+                    
+                    console.log(`    Normal before positive/negative check: [${normal.x.toFixed(4)}, ${normal.y.toFixed(4)}, ${normal.z.toFixed(4)}], positive=${plane.positive}`);
+                    
+                    // Apply positive/negative setting
                     if (plane.positive) {
-                        if ((dominant === 'x' && normal.x < 0) || (dominant === 'y' && normal.y < 0) || (dominant === 'z' && normal.z < 0)) {
-                            normal.negate();
-                        }
+                        // If positive direction is desired, flip the normal
+                        normal.negate();
+                        console.log(`    Normal AFTER applying positive direction: [${normal.x.toFixed(4)}, ${normal.y.toFixed(4)}, ${normal.z.toFixed(4)}]`);
                     } else {
-                        if ((dominant === 'x' && normal.x > 0) || (dominant === 'y' && normal.y > 0) || (dominant === 'z' && normal.z > 0)) {
-                            normal.negate();
-                        }
+                        console.log(`    Normal kept as negative direction (no flip): [${normal.x.toFixed(4)}, ${normal.y.toFixed(4)}, ${normal.z.toFixed(4)}]`);
                     }
+                    
+                    // Return as array with high precision
                     return [
-                        Math.round(normal.x * 100) / 100,
-                        Math.round(normal.y * 100) / 100,
-                        Math.round(normal.z * 100) / 100
+                        Math.round(normal.x * 10000) / 10000,
+                        Math.round(normal.y * 10000) / 10000,
+                        Math.round(normal.z * 10000) / 10000
                     ];
                 }
 
                 // Build structure
-                let receiverPlaneIndex = 1;
+                // First, check for duplicate receiver plane names
+                const receiverPlaneNames = new Set();
+                const receiverPlanes = planes.filter(p => p.type === "Receiver");
+                receiverPlanes.forEach(plane => {
+                    if (receiverPlaneNames.has(plane.name)) {
+                        alert(`Warning: Multiple receiver planes have the same name "${plane.name}". Please rename them to get accurate results.`);
+                        console.error(`❌ DUPLICATE NAME DETECTED: "${plane.name}"`);
+                    }
+                    receiverPlaneNames.add(plane.name);
+                });
+                
+                console.log(`=== Processing ${receiverPlanes.length} Receiver Plane(s) ===`);
+                
                 planes.forEach(plane => {
                     if (plane.type === "Receiver") {
                         // Calculate grid dimensions based on plane size and user input N
@@ -2748,12 +2993,26 @@
                         const gridWidth = roundedWidth * N;
                         const gridHeight = roundedHeight * N;
                         
-                        console.log(`Receiver plane ${receiverPlaneIndex}: original size ${plane.width}x${plane.height}, rounded to ${roundedWidth}x${roundedHeight}, grid size ${gridWidth}x${gridHeight}`);
+                        console.log(`\n📊 Receiver plane "${plane.name}": original size ${plane.width}x${plane.height}, rounded to ${roundedWidth}x${roundedHeight}, grid size ${gridWidth}x${gridHeight}`);
                         
                         const points = generatePointsOnPlane(plane, gridHeight, gridWidth);
                         const normalArr = computePlaneNormal(plane);
                         
-                        receiver_planes[`plane${receiverPlaneIndex}`] = {
+                        console.log(`  🔄 Plane "${plane.name}" - angle: ${plane.angle}°, incline: ${plane.incline}°, positive: ${plane.positive}`);
+                        console.log(`  📍 Plane mesh position: [${plane.mesh.position.x.toFixed(2)}, ${plane.mesh.position.y.toFixed(2)}, ${plane.mesh.position.z.toFixed(2)}]`);
+                        console.log(`  🔄 Plane mesh rotation (euler): [${(plane.mesh.rotation.x * 180/Math.PI).toFixed(2)}°, ${(plane.mesh.rotation.y * 180/Math.PI).toFixed(2)}°, ${(plane.mesh.rotation.z * 180/Math.PI).toFixed(2)}°]`);
+                        console.log(`  ➡️  Computed normal: [${normalArr[0]}, ${normalArr[1]}, ${normalArr[2]}]`);
+                        console.log(`  🎯 Sample point 0: [${points[0].position.x.toFixed(2)}, ${points[0].position.y.toFixed(2)}, ${points[0].position.z.toFixed(2)}]`);
+                        console.log(`  🎯 Sample point ${points.length-1}: [${points[points.length-1].position.x.toFixed(2)}, ${points[points.length-1].position.y.toFixed(2)}, ${points[points.length-1].position.z.toFixed(2)}]`);
+                        console.log(`  🎯 Total points generated: ${points.length}`);
+                        
+                        // Check if name already exists (shouldn't due to earlier check, but safety)
+                        if (receiver_planes[plane.name]) {
+                            console.error(`❌ OVERWRITING existing receiver plane data for "${plane.name}"!`);
+                        }
+                        
+                        // Use the actual plane's name instead of generic plane1, plane2, etc.
+                        receiver_planes[plane.name] = {
                             width: gridWidth,
                             height: gridHeight,
                             points: points.map(pt => ({
@@ -2765,9 +3024,11 @@
                                 normal: normalArr
                             }))
                         };
-                        receiverPlaneIndex++;
                     } else if (plane.type === "Emitter") {
                         const worldCorners = computeWorldCorners(plane);
+                        console.log(`Emitter "${plane.name}" - temperature: ${plane.temperature}`);
+                        console.log(`  Position: [${plane.x}, ${plane.y}, ${plane.z}]`);
+                        console.log(`  Corners:`, worldCorners);
                         polygons.push({ polygon: worldCorners, temperature: plane.temperature });
                     } else if (plane.type === "Inert") {
                         const worldCorners = computeWorldCorners(plane);
@@ -2805,27 +3066,66 @@
                 }
                 
                 const responseData = await resp.json();
-                console.log('Backend response:', responseData);
                 
-                if (responseData.success && responseData.plane_info && responseData.plane_info.values) {
-                    // Process the temperature values from the backend
-                    const temperatureValues = responseData.plane_info.values;
+                // Log the complete backend response
+                console.log('=== BACKEND RESPONSE RECEIVED ===');
+                console.log('Full JSON response:', JSON.stringify(responseData, null, 2));
+                console.log('Number of planes in response:', responseData.planes ? responseData.planes.length : 0);
+                if (responseData.planes) {
+                    responseData.planes.forEach((plane, idx) => {
+                        console.log(`  Plane ${idx + 1}: "${plane.name}" - ${plane.width}x${plane.height} grid, ${plane.values.length} values`);
+                        console.log(`    Temperature range: ${Math.min(...plane.values).toFixed(2)} to ${Math.max(...plane.values).toFixed(2)}`);
+                    });
+                }
+                console.log('=== END BACKEND RESPONSE ===');
+                
+                if (responseData.success && responseData.planes && Array.isArray(responseData.planes)) {
+                    // Process multiple planes
+                    let planesProcessed = 0;
+                    let planesNotMatched = [];
                     
-                    // Create contour data structure
-                    const contourData = {
-                        width: responseData.plane_info.width || 10,
-                        height: responseData.plane_info.height || 10,
-                        values: temperatureValues
-                    };
+                    console.log(`\n=== Matching Backend Response to Receiver Planes ===`);
+                    console.log(`Backend returned ${responseData.planes.length} plane(s)`);
+                    console.log(`We have ${receiverPlanes.length} receiver plane(s) in scene`);
                     
-                    // Store the contour data
-                    uploadedContour = contourData;
-                    dataarrayforcontour = temperatureValues;
+                    responseData.planes.forEach(planeData => {
+                        console.log(`\n🔍 Looking for plane with name: "${planeData.name}"`);
+                        
+                        // Find matching receiver plane by name
+                        const matchingPlane = planes.find(p => 
+                            p.type === "Receiver" && p.name === planeData.name
+                        );
+                        
+                        if (matchingPlane) {
+                            // Store contour data on the plane object
+                            matchingPlane.contourData = {
+                                width: planeData.width,
+                                height: planeData.height,
+                                values: planeData.values
+                            };
+                            
+                            console.log(`✅ MATCHED! Contour data applied to receiver plane: ${matchingPlane.name}`);
+                            console.log(`   Grid: ${planeData.width}x${planeData.height}, Values: ${planeData.values.length}`);
+                            planesProcessed++;
+                            
+                            // Apply contour texture to the plane
+                            applyContourTexture(matchingPlane);
+                        } else {
+                            console.error(`❌ NO MATCH FOUND for backend plane: "${planeData.name}"`);
+                            console.log(`   Available receiver planes: ${receiverPlanes.map(p => `"${p.name}"`).join(', ')}`);
+                            planesNotMatched.push(planeData.name);
+                        }
+                    });
                     
-                    console.log('Contour data processed:', contourData);
+                    console.log(`\n=== Matching Complete ===`);
+                    console.log(`✅ Successfully matched: ${planesProcessed}`);
+                    console.log(`❌ Not matched: ${planesNotMatched.length}`);
                     
-                    // Show the contour modal using the received data
-                    showContourToSelectedPlane();
+                    if (planesNotMatched.length > 0) {
+                        alert(`Calculation complete!\n\nMatched: ${planesProcessed} plane(s)\nNot matched: ${planesNotMatched.length} plane(s) (${planesNotMatched.join(', ')})\n\nCheck console for details.`);
+                    } else {
+                        alert(`Calculation complete! Contour data applied to ${planesProcessed} receiver plane(s).`);
+                    }
                 } else {
                     throw new Error('Invalid response format from backend');
                 }
@@ -2978,13 +3278,115 @@
         }
 
 
+        // Function to apply contour texture to a plane automatically
+        function applyContourTexture(plane) {
+            if (!plane.contourData || !plane.contourData.values) {
+                console.warn(`No contour data for plane: ${plane.name}`);
+                return;
+            }
+            
+            console.log(`Applying contour texture to ${plane.name}`);
+            
+            const contourData = plane.contourData;
+            const n = contourData.width;
+            const m = contourData.height;
+            
+            // Calculate SVG dimensions based on plane aspect ratio
+            const planeAspectRatio = plane.width / plane.height;
+            const planeArea = plane.width * plane.height;
+            let baseSize = 512;
+            if (planeArea > 25) {
+                baseSize = Math.max(512, Math.round(Math.sqrt(planeArea) * 100));
+            }
+            
+            let svgWidth, svgHeight;
+            if (planeAspectRatio >= 1) {
+                svgWidth = baseSize;
+                svgHeight = Math.round(baseSize / planeAspectRatio);
+            } else {
+                svgHeight = baseSize;
+                svgWidth = Math.round(baseSize * planeAspectRatio);
+            }
+            
+            // Create SVG and generate contour
+            const svg = d3.select("#contour-svg");
+            svg.attr("width", svgWidth).attr("height", svgHeight);
+            svg.selectAll("*").remove();
+            
+            const projection = d3.geoIdentity().fitSize([svgWidth, svgHeight], {
+                type: "Polygon",
+                coordinates: [[[0, 0], [n, 0], [n, m], [0, m], [0, 0]]]
+            });
+            
+            const path = d3.geoPath().projection(projection);
+            const contours = d3.contours().size([n, m]);
+            const color = d3.scaleSequential(d3.interpolateTurbo).domain(d3.extent(contourData.values)).nice();
+            
+            svg.append("g")
+                .attr("stroke", "black")
+                .selectAll()
+                .data(color.ticks(20))
+                .join("path")
+                .attr("d", d => path(contours.contour(contourData.values, d)))
+                .attr("fill", d => color(d));
+            
+            // Convert SVG to Canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = svgWidth;
+            canvas.height = svgHeight;
+            const ctx = canvas.getContext('2d');
+            
+            const svgString = new XMLSerializer().serializeToString(svg.node());
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+            
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                
+                // Create texture from canvas
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.generateMipmaps = false;
+                
+                // Mark as contour texture for state management
+                texture.isContourTexture = true;
+                texture.contourData = contourData.values;
+                
+                // Apply texture to plane
+                plane.mesh.material.map = texture;
+                plane.mesh.material.needsUpdate = true;
+                plane.mesh.material.color.set(0xffffff); // Set to white so texture shows correctly
+                
+                console.log(`✅ Contour texture applied to ${plane.name}`);
+            };
+            img.onerror = function(err) {
+                console.error(`Failed to load contour image for ${plane.name}:`, err);
+            };
+            img.src = url;
+        }
+
         function showContourToSelectedPlane() {
             if (selectedPlanes.length === 0) {
-                alert("Please select a plane first");
+                alert("Please select a receiver plane first");
                 return;
             }
 
             const selectedPlane = selectedPlanes[0]; // Use the first selected plane
+            
+            // Check if this is a receiver plane with contour data
+            if (selectedPlane.type !== "Receiver") {
+                alert("Please select a receiver plane. Only receiver planes have contour data.");
+                return;
+            }
+            
+            if (!selectedPlane.contourData || !selectedPlane.contourData.values) {
+                alert(`No contour data available for ${selectedPlane.name}. Please run Calculate first.`);
+                return;
+            }
 
             // Get modal elements
             const modal = document.getElementById("contourModal");
@@ -2992,25 +3394,11 @@
             const valueDisplay = document.getElementById("valueDisplay");
             const span = document.getElementsByClassName("close")[0];
 
-            // Use uploaded contour if available, otherwise generate if missing
-            if (!dataarrayforcontour) {
-                if (uploadedContour && uploadedContour.values) {
-                    dataarrayforcontour = uploadedContour.values;
-                } else {
-                    alert('Contour data not available. Please provide data from backend.');
-                    return;
-                }
-            }
-
-            // Calculate dimensions based on plane size for display
-            const gridWidth = (uploadedContour && uploadedContour.width) ? uploadedContour.width : Math.round(selectedPlane.width) * 2;
-            const gridHeight = (uploadedContour && uploadedContour.height) ? uploadedContour.height : Math.round(selectedPlane.height) * 2;
-
-            // Generate the contour data based on plane dimensions
+            // Use the selected plane's contour data
             const contourData = {
-                width: gridWidth,
-                height: gridHeight,
-                values: dataarrayforcontour
+                width: selectedPlane.contourData.width,
+                height: selectedPlane.contourData.height,
+                values: selectedPlane.contourData.values
             };
 
             // Calculate SVG dimensions based on plane aspect ratio and size
